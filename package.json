@@ -1,0 +1,92 @@
+{
+  "name": "objdiff-code",
+  "displayName": "objdiff-code",
+  "description": "objdiff",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "rsbuild build",
+    "watch": "rsbuild build --watch --mode development",
+    "check": "biome check --write",
+    "format": "biome format --write"
+  },
+  "dependencies": {
+    "@protobuf-ts/runtime": "^2.9.4",
+    "clsx": "^2.1.1",
+    "memoize-one": "^6.0.0",
+    "picomatch": "^4.0.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-virtualized-auto-sizer": "^1.0.24",
+    "react-window": "^1.8.10",
+    "zustand": "^5.0.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^1.9.3",
+    "@rsbuild/core": "^1.1.8",
+    "@rsbuild/plugin-react": "^1.0.7",
+    "@rsbuild/plugin-type-check": "^1.1.0",
+    "@types/picomatch": "^3.0.1",
+    "@types/react": "^18.3.1",
+    "@types/react-dom": "^18.3.1",
+    "@types/react-window": "^1.8.8",
+    "@types/vscode": "^1.96.0",
+    "@types/vscode-webview": "^1.57.5",
+    "@vscode/test-cli": "^0.0.10",
+    "@vscode/test-electron": "^2.4.1",
+    "typescript": "^5.7.2"
+  },
+  "main": "./dist/extension.js",
+  "engines": {
+    "vscode": "^1.96.0"
+  },
+  "browserslist": ["chrome 128"],
+  "categories": ["Other"],
+  "activationEvents": ["*"],
+  "contributes": {
+    "commands": [
+      {
+        "command": "objdiff.build",
+        "title": "objdiff: build"
+      }
+    ],
+    "configuration": {
+      "title": "objdiff",
+      "properties": {
+        "objdiff.binaryPath": {
+          "type": "string",
+          "description": "Path to the objdiff-cli binary",
+          "ignoreSync": true
+        }
+      }
+    },
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "objdiff",
+          "title": "objdiff",
+          "icon": "media/icon.svg"
+        }
+      ]
+    },
+    "views": {
+      "objdiff": [
+        {
+          "id": "objdiff",
+          "name": "objdiff",
+          "type": "webview"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "objdiff",
+        "contents": "Loading..."
+      }
+    ],
+    "taskDefinitions": [
+      {
+        "type": "objdiff"
+      }
+    ]
+  }
+}

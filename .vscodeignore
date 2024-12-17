@@ -1,0 +1,14 @@
+.vscode/**
+.vscode-test/**
+out/**
+node_modules/**
+src/**
+webview/**
+.gitignore
+.yarnrc
+rsbuild.config.ts
+**/tsconfig.json
+**/biome.json
+**/*.map
+**/*.ts
+**/.vscode-test.*

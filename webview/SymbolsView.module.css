@@ -1,0 +1,23 @@
+.symbol-list {
+  list-style-type: none;
+  margin: 0;
+  padding: 0;
+
+  li {
+    cursor: pointer;
+    user-select: none;
+    /* margin: 0 0.5rem; */
+
+    &:hover {
+      background-color: var(--vscode-list-hoverBackground);
+    }
+  }
+}
+
+.section {
+  padding-left: 0;
+}
+
+.symbol {
+  padding-left: 0.5rem;
+}
