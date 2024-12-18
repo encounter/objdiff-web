@@ -47,6 +47,7 @@ export default defineConfig({
       html: {
         inject: 'body',
         scriptLoading: 'blocking',
+        title: 'objdiff',
       },
       plugins: [
         pluginReact({

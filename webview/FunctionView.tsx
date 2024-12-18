@@ -1,18 +1,20 @@
 import styles from './FunctionView.module.css';
+import headerStyles from './Header.module.css';
 
 import clsx from 'clsx';
 import memoize from 'memoize-one';
-import { memo } from 'react';
+import { memo, useMemo } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, areEqual } from 'react-window';
 import type { ListChildComponentProps } from 'react-window';
-import { DiffKind } from '../gen/diff_pb';
+import { DiffKind } from '../shared/gen/diff_pb';
 import type {
   Symbol as DiffSymbol,
-  FunctionDiff,
   InstructionDiff,
-} from '../gen/diff_pb';
+  SymbolDiff,
+} from '../shared/gen/diff_pb';
 import { displayDiff } from './diff';
+import { useAppStore } from './state';
 import { useFontSize } from './util';
 
 const AsmCell = ({
@@ -132,13 +134,30 @@ const AsmCell = ({
       index++;
     }
   });
-  return <div className={styles.instructionCell}>{out}</div>;
+
+  const classes = [styles.instructionCell];
+  if (insDiff.diff_kind) {
+    classes.push(styles.diff_any);
+  }
+  switch (insDiff.diff_kind) {
+    case DiffKind.DIFF_DELETE:
+      classes.push(styles.diff_remove);
+      break;
+    case DiffKind.DIFF_INSERT:
+      classes.push(styles.diff_add);
+      break;
+    case DiffKind.DIFF_REPLACE:
+      classes.push(styles.diff_change);
+      break;
+  }
+
+  return <div className={clsx(classes)}>{out}</div>;
 };
 
 type ItemData = {
   itemCount: number;
-  left: FunctionDiff | null;
-  right: FunctionDiff | null;
+  left: SymbolDiff | null;
+  right: SymbolDiff | null;
 };
 
 const AsmRow = memo(
@@ -160,7 +179,7 @@ const AsmRow = memo(
 );
 
 const createItemData = memoize(
-  (left: FunctionDiff | null, right: FunctionDiff | null) => {
+  (left: SymbolDiff | null, right: SymbolDiff | null) => {
     const itemCount = Math.max(
       left?.instructions.length || 0,
       right?.instructions.length || 0,
@@ -172,25 +191,49 @@ const createItemData = memoize(
 const FunctionView = ({
   left,
   right,
-}: { left: FunctionDiff | null; right: FunctionDiff | null }) => {
+}: { left: SymbolDiff | null; right: SymbolDiff | null }) => {
+  const setSelectedSymbol = useAppStore((state) => state.setSelectedSymbol);
+  const setSymbolScrollOffset = useAppStore(
+    (state) => state.setSymbolScrollOffset,
+  );
+
+  const symbolName = left?.symbol?.name || right?.symbol?.name || '';
+  const initialScrollOffset = useMemo(
+    () => useAppStore.getState().symbolScrollOffsets[symbolName] || 0,
+    [symbolName],
+  );
+
   const itemSize = useFontSize() * 1.33;
   const itemData = createItemData(left, right);
+  const demangledName =
+    left?.symbol?.demangled_name || right?.symbol?.demangled_name;
   return (
-    <AutoSizer>
-      {({ height, width }) => (
-        <FixedSizeList
-          className={styles.instructionList}
-          height={height}
-          itemCount={itemData.itemCount}
-          itemSize={itemSize}
-          width={width}
-          itemData={itemData}
-          overscanCount={20}
-        >
-          {AsmRow}
-        </FixedSizeList>
-      )}
-    </AutoSizer>
+    <>
+      <div className={headerStyles.header}>
+        <button onClick={() => setSelectedSymbol(null)}>Back</button>
+        <span title={demangledName}>{demangledName}</span>
+      </div>
+      <div className={styles.instructionList}>
+        <AutoSizer>
+          {({ height, width }) => (
+            <FixedSizeList
+              height={height}
+              itemCount={itemData.itemCount}
+              itemSize={itemSize}
+              width={width}
+              itemData={itemData}
+              overscanCount={20}
+              onScroll={(e) => {
+                setSymbolScrollOffset(symbolName, e.scrollOffset);
+              }}
+              initialScrollOffset={initialScrollOffset}
+            >
+              {AsmRow}
+            </FixedSizeList>
+          )}
+        </AutoSizer>
+      </div>
+    </>
   );
 };
 

@@ -1,0 +1,19 @@
+.header {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5em;
+  padding: 0.5em;
+  background-color: var(--vscode-panel-background);
+  border-bottom: 1px solid var(--vscode-menu-separatorBackground);
+
+  > span {
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-weight: var(--vscode-editor-font-weight, normal);
+    font-size: var(--font-size);
+    text-wrap: nowrap;
+    white-space: pre;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

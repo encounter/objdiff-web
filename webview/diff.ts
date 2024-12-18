@@ -2,7 +2,7 @@ import type {
   ArgumentValue,
   InstructionDiff,
   RelocationTarget,
-} from '../gen/diff_pb';
+} from '../shared/gen/diff_pb';
 
 export type DiffText =
   | DiffTextBasic

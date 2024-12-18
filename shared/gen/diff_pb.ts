@@ -296,9 +296,22 @@ export interface InstructionBranchTo {
     branch_index: number;
 }
 /**
- * @generated from protobuf message objdiff.diff.FunctionDiff
+ * @generated from protobuf message objdiff.diff.SymbolRef
  */
-export interface FunctionDiff {
+export interface SymbolRef {
+    /**
+     * @generated from protobuf field: optional uint32 section_index = 1;
+     */
+    section_index?: number;
+    /**
+     * @generated from protobuf field: uint32 symbol_index = 2;
+     */
+    symbol_index: number;
+}
+/**
+ * @generated from protobuf message objdiff.diff.SymbolDiff
+ */
+export interface SymbolDiff {
     /**
      * @generated from protobuf field: objdiff.diff.Symbol symbol = 1;
      */
@@ -311,6 +324,12 @@ export interface FunctionDiff {
      * @generated from protobuf field: optional float match_percent = 3;
      */
     match_percent?: number;
+    /**
+     * The symbol ref in the _other_ object that this symbol was diffed against
+     *
+     * @generated from protobuf field: optional objdiff.diff.SymbolRef target = 5;
+     */
+    target?: SymbolRef;
 }
 /**
  * @generated from protobuf message objdiff.diff.DataDiff
@@ -352,9 +371,9 @@ export interface SectionDiff {
      */
     address: bigint;
     /**
-     * @generated from protobuf field: repeated objdiff.diff.FunctionDiff functions = 5;
+     * @generated from protobuf field: repeated objdiff.diff.SymbolDiff symbols = 5;
      */
-    functions: FunctionDiff[];
+    symbols: SymbolDiff[];
     /**
      * @generated from protobuf field: repeated objdiff.diff.DataDiff data = 6;
      */
@@ -405,17 +424,17 @@ export enum SymbolFlag {
      */
     SYMBOL_LOCAL = 2,
     /**
-     * @generated from protobuf enum value: SYMBOL_WEAK = 3;
+     * @generated from protobuf enum value: SYMBOL_WEAK = 4;
      */
-    SYMBOL_WEAK = 3,
+    SYMBOL_WEAK = 4,
     /**
-     * @generated from protobuf enum value: SYMBOL_COMMON = 4;
+     * @generated from protobuf enum value: SYMBOL_COMMON = 8;
      */
-    SYMBOL_COMMON = 4,
+    SYMBOL_COMMON = 8,
     /**
-     * @generated from protobuf enum value: SYMBOL_HIDDEN = 5;
+     * @generated from protobuf enum value: SYMBOL_HIDDEN = 16;
      */
-    SYMBOL_HIDDEN = 5
+    SYMBOL_HIDDEN = 16
 }
 /**
  * @generated from protobuf enum objdiff.diff.DiffKind
@@ -1196,22 +1215,77 @@ class InstructionBranchTo$Type extends MessageType<InstructionBranchTo> {
  */
 export const InstructionBranchTo = new InstructionBranchTo$Type();
 // @generated message type with reflection information, may provide speed optimized methods
-class FunctionDiff$Type extends MessageType<FunctionDiff> {
+class SymbolRef$Type extends MessageType<SymbolRef> {
     constructor() {
-        super("objdiff.diff.FunctionDiff", [
-            { no: 1, name: "symbol", kind: "message", T: () => Symbol },
-            { no: 2, name: "instructions", kind: "message", repeat: 1 /*RepeatType.PACKED*/, T: () => InstructionDiff },
-            { no: 3, name: "match_percent", kind: "scalar", localName: "match_percent", opt: true, T: 2 /*ScalarType.FLOAT*/ }
+        super("objdiff.diff.SymbolRef", [
+            { no: 1, name: "section_index", kind: "scalar", localName: "section_index", opt: true, T: 13 /*ScalarType.UINT32*/ },
+            { no: 2, name: "symbol_index", kind: "scalar", localName: "symbol_index", T: 13 /*ScalarType.UINT32*/ }
         ]);
     }
-    create(value?: PartialMessage<FunctionDiff>): FunctionDiff {
+    create(value?: PartialMessage<SymbolRef>): SymbolRef {
+        const message = globalThis.Object.create((this.messagePrototype!));
+        message.symbol_index = 0;
+        if (value !== undefined)
+            reflectionMergePartial<SymbolRef>(this, message, value);
+        return message;
+    }
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: SymbolRef): SymbolRef {
+        let message = target ?? this.create(), end = reader.pos + length;
+        while (reader.pos < end) {
+            let [fieldNo, wireType] = reader.tag();
+            switch (fieldNo) {
+                case /* optional uint32 section_index */ 1:
+                    message.section_index = reader.uint32();
+                    break;
+                case /* uint32 symbol_index */ 2:
+                    message.symbol_index = reader.uint32();
+                    break;
+                default:
+                    let u = options.readUnknownField;
+                    if (u === "throw")
+                        throw new globalThis.Error(`Unknown field ${fieldNo} (wire type ${wireType}) for ${this.typeName}`);
+                    let d = reader.skip(wireType);
+                    if (u !== false)
+                        (u === true ? UnknownFieldHandler.onRead : u)(this.typeName, message, fieldNo, wireType, d);
+            }
+        }
+        return message;
+    }
+    internalBinaryWrite(message: SymbolRef, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+        /* optional uint32 section_index = 1; */
+        if (message.section_index !== undefined)
+            writer.tag(1, WireType.Varint).uint32(message.section_index);
+        /* uint32 symbol_index = 2; */
+        if (message.symbol_index !== 0)
+            writer.tag(2, WireType.Varint).uint32(message.symbol_index);
+        let u = options.writeUnknownFields;
+        if (u !== false)
+            (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
+        return writer;
+    }
+}
+/**
+ * @generated MessageType for protobuf message objdiff.diff.SymbolRef
+ */
+export const SymbolRef = new SymbolRef$Type();
+// @generated message type with reflection information, may provide speed optimized methods
+class SymbolDiff$Type extends MessageType<SymbolDiff> {
+    constructor() {
+        super("objdiff.diff.SymbolDiff", [
+            { no: 1, name: "symbol", kind: "message", T: () => Symbol },
+            { no: 2, name: "instructions", kind: "message", repeat: 1 /*RepeatType.PACKED*/, T: () => InstructionDiff },
+            { no: 3, name: "match_percent", kind: "scalar", localName: "match_percent", opt: true, T: 2 /*ScalarType.FLOAT*/ },
+            { no: 5, name: "target", kind: "message", T: () => SymbolRef }
+        ]);
+    }
+    create(value?: PartialMessage<SymbolDiff>): SymbolDiff {
         const message = globalThis.Object.create((this.messagePrototype!));
         message.instructions = [];
         if (value !== undefined)
-            reflectionMergePartial<FunctionDiff>(this, message, value);
+            reflectionMergePartial<SymbolDiff>(this, message, value);
         return message;
     }
-    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: FunctionDiff): FunctionDiff {
+    internalBinaryRead(reader: IBinaryReader, length: number, options: BinaryReadOptions, target?: SymbolDiff): SymbolDiff {
         let message = target ?? this.create(), end = reader.pos + length;
         while (reader.pos < end) {
             let [fieldNo, wireType] = reader.tag();
@@ -1225,6 +1299,9 @@ class FunctionDiff$Type extends MessageType<FunctionDiff> {
                 case /* optional float match_percent */ 3:
                     message.match_percent = reader.float();
                     break;
+                case /* optional objdiff.diff.SymbolRef target */ 5:
+                    message.target = SymbolRef.internalBinaryRead(reader, reader.uint32(), options, message.target);
+                    break;
                 default:
                     let u = options.readUnknownField;
                     if (u === "throw")
@@ -1236,7 +1313,7 @@ class FunctionDiff$Type extends MessageType<FunctionDiff> {
         }
         return message;
     }
-    internalBinaryWrite(message: FunctionDiff, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
+    internalBinaryWrite(message: SymbolDiff, writer: IBinaryWriter, options: BinaryWriteOptions): IBinaryWriter {
         /* objdiff.diff.Symbol symbol = 1; */
         if (message.symbol)
             Symbol.internalBinaryWrite(message.symbol, writer.tag(1, WireType.LengthDelimited).fork(), options).join();
@@ -1246,6 +1323,9 @@ class FunctionDiff$Type extends MessageType<FunctionDiff> {
         /* optional float match_percent = 3; */
         if (message.match_percent !== undefined)
             writer.tag(3, WireType.Bit32).float(message.match_percent);
+        /* optional objdiff.diff.SymbolRef target = 5; */
+        if (message.target)
+            SymbolRef.internalBinaryWrite(message.target, writer.tag(5, WireType.LengthDelimited).fork(), options).join();
         let u = options.writeUnknownFields;
         if (u !== false)
             (u == true ? UnknownFieldHandler.onWrite : u)(this.typeName, message, writer);
@@ -1253,9 +1333,9 @@ class FunctionDiff$Type extends MessageType<FunctionDiff> {
     }
 }
 /**
- * @generated MessageType for protobuf message objdiff.diff.FunctionDiff
+ * @generated MessageType for protobuf message objdiff.diff.SymbolDiff
  */
-export const FunctionDiff = new FunctionDiff$Type();
+export const SymbolDiff = new SymbolDiff$Type();
 // @generated message type with reflection information, may provide speed optimized methods
 class DataDiff$Type extends MessageType<DataDiff> {
     constructor() {
@@ -1327,7 +1407,7 @@ class SectionDiff$Type extends MessageType<SectionDiff> {
             { no: 2, name: "kind", kind: "enum", T: () => ["objdiff.diff.SectionKind", SectionKind] },
             { no: 3, name: "size", kind: "scalar", T: 4 /*ScalarType.UINT64*/, L: 0 /*LongType.BIGINT*/ },
             { no: 4, name: "address", kind: "scalar", T: 4 /*ScalarType.UINT64*/, L: 0 /*LongType.BIGINT*/ },
-            { no: 5, name: "functions", kind: "message", repeat: 1 /*RepeatType.PACKED*/, T: () => FunctionDiff },
+            { no: 5, name: "symbols", kind: "message", repeat: 1 /*RepeatType.PACKED*/, T: () => SymbolDiff },
             { no: 6, name: "data", kind: "message", repeat: 1 /*RepeatType.PACKED*/, T: () => DataDiff },
             { no: 7, name: "match_percent", kind: "scalar", localName: "match_percent", opt: true, T: 2 /*ScalarType.FLOAT*/ }
         ]);
@@ -1338,7 +1418,7 @@ class SectionDiff$Type extends MessageType<SectionDiff> {
         message.kind = 0;
         message.size = 0n;
         message.address = 0n;
-        message.functions = [];
+        message.symbols = [];
         message.data = [];
         if (value !== undefined)
             reflectionMergePartial<SectionDiff>(this, message, value);
@@ -1361,8 +1441,8 @@ class SectionDiff$Type extends MessageType<SectionDiff> {
                 case /* uint64 address */ 4:
                     message.address = reader.uint64().toBigInt();
                     break;
-                case /* repeated objdiff.diff.FunctionDiff functions */ 5:
-                    message.functions.push(FunctionDiff.internalBinaryRead(reader, reader.uint32(), options));
+                case /* repeated objdiff.diff.SymbolDiff symbols */ 5:
+                    message.symbols.push(SymbolDiff.internalBinaryRead(reader, reader.uint32(), options));
                     break;
                 case /* repeated objdiff.diff.DataDiff data */ 6:
                     message.data.push(DataDiff.internalBinaryRead(reader, reader.uint32(), options));
@@ -1394,9 +1474,9 @@ class SectionDiff$Type extends MessageType<SectionDiff> {
         /* uint64 address = 4; */
         if (message.address !== 0n)
             writer.tag(4, WireType.Varint).uint64(message.address);
-        /* repeated objdiff.diff.FunctionDiff functions = 5; */
-        for (let i = 0; i < message.functions.length; i++)
-            FunctionDiff.internalBinaryWrite(message.functions[i], writer.tag(5, WireType.LengthDelimited).fork(), options).join();
+        /* repeated objdiff.diff.SymbolDiff symbols = 5; */
+        for (let i = 0; i < message.symbols.length; i++)
+            SymbolDiff.internalBinaryWrite(message.symbols[i], writer.tag(5, WireType.LengthDelimited).fork(), options).join();
         /* repeated objdiff.diff.DataDiff data = 6; */
         for (let i = 0; i < message.data.length; i++)
             DataDiff.internalBinaryWrite(message.data[i], writer.tag(6, WireType.LengthDelimited).fork(), options).join();

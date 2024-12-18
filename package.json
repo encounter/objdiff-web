@@ -39,14 +39,30 @@
   "engines": {
     "vscode": "^1.96.0"
   },
-  "browserslist": ["chrome 128"],
-  "categories": ["Other"],
-  "activationEvents": ["*"],
+  "browserslist": [
+    "chrome 128"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
   "contributes": {
     "commands": [
       {
         "command": "objdiff.build",
         "title": "objdiff: build"
+      },
+      {
+        "command": "objdiff.copySymbolName",
+        "title": "Copy name",
+        "enablement": "webviewId == 'objdiff' && contextType == 'symbol'"
+      },
+      {
+        "command": "objdiff.copySymbolDemangledName",
+        "title": "Copy demangled name",
+        "enablement": "webviewId == 'objdiff' && contextType == 'symbol' && symbolDemangledName"
       }
     ],
     "configuration": {
@@ -59,6 +75,23 @@
         }
       }
     },
+    "menus": {
+      "webview/context": [
+        {
+          "command": "objdiff.copySymbolName",
+          "when": "webviewId == 'objdiff' && contextType == 'symbol'"
+        },
+        {
+          "command": "objdiff.copySymbolDemangledName",
+          "when": "webviewId == 'objdiff' && contextType == 'symbol'"
+        }
+      ]
+    },
+    "taskDefinitions": [
+      {
+        "type": "objdiff"
+      }
+    ],
     "viewsContainers": {
       "panel": [
         {
@@ -81,11 +114,6 @@
       {
         "view": "objdiff",
         "contents": "Loading..."
-      }
-    ],
-    "taskDefinitions": [
-      {
-        "type": "objdiff"
       }
     ]
   }

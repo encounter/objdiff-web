@@ -19,5 +19,5 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
-  "include": ["src", "webview", "gen"]
+  "include": ["src", "webview", "shared"]
 }

@@ -1,4 +1,14 @@
+.symbols {
+  flex: 1 1 0;
+  display: flex;
+  flex-flow: row;
+  overflow: auto;
+  gap: 0.5em;
+}
+
 .symbol-list {
+  flex: 1 1 0;
+  overflow-x: scroll;
   list-style-type: none;
   margin: 0;
   padding: 0;
@@ -6,7 +16,13 @@
   li {
     cursor: pointer;
     user-select: none;
-    /* margin: 0 0.5rem; */
+    height: var(--list-row-height);
+
+    font-family: var(--vscode-editor-font-family, monospace);
+    font-weight: var(--vscode-editor-font-weight, normal);
+    font-size: var(--font-size);
+    text-wrap: nowrap;
+    white-space: pre;
 
     &:hover {
       background-color: var(--vscode-list-hoverBackground);
@@ -15,9 +31,31 @@
 }
 
 .section {
-  padding-left: 0;
+  padding-left: 0.5em;
 }
 
 .symbol {
-  padding-left: 0.5rem;
+  padding-left: 2em;
+}
+
+.flag-global {
+  color: lightgreen;
+}
+
+.flag-weak {
+  /* todo */
+}
+
+.symbol-name {
+  color: light-dark(black, white);
+}
+
+.percent-100 {
+  color: lightgreen;
+}
+.percent-50 {
+  color: lightblue;
+}
+.percent-0 {
+  color: lightcoral;
 }

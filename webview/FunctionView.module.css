@@ -1,4 +1,5 @@
 .instruction-list {
+  flex: 1 1 auto;
 }
 
 .instruction-row {
@@ -16,87 +17,91 @@
   text-wrap: nowrap;
   white-space: pre;
   overflow: hidden;
+  padding-left: 0.5em;
 }
 
 .highlightable {
   cursor: pointer;
 }
-
-.diff_change {
-  color: #6d6dff;
-}
-.rotation0 {
-  color: magenta;
-}
-.rotation1 {
-  color: cyan;
-}
-.rotation2 {
-  color: rgb(0, 212, 0);
-}
-.rotation3 {
-  color: red;
-}
-.rotation4 {
-  color: rgb(103, 106, 255);
-}
-.rotation5 {
-  color: lightpink;
-}
-.rotation6 {
-  color: lightcyan;
-}
-.rotation7 {
-  color: lightgreen;
-}
-.rotation8 {
-  color: grey;
-}
-.symbol {
-  color: white;
-}
 .line-number {
   color: var(--vscode-editorLineNumber-foreground);
 }
+.diff_any {
+  background-color: rgba(255, 255, 255, 0.02);
+}
+.diff_change {
+  color: #6d6dff;
+}
+.diff_add {
+  color: #45bd00;
+}
+.diff_remove {
+  color: #c82829;
+}
+.symbol {
+  color: light-dark(black, white);
+}
 
-:global(body.vscode-light) {
-  .rotation0 {
+.rotation0 {
+  color: light-dark(
     /* hsv(0° 60% 80%) */
-    color: rgb(205, 82, 82);
-  }
-  .rotation1 {
+    rgb(205, 82, 82),
+    magenta
+  );
+}
+.rotation1 {
+  color: light-dark(
     /* hsv(40° 60% 80%) */
-    color: rgb(205, 164, 82);
-  }
-  .rotation2 {
+    rgb(205, 164, 82),
+    cyan
+  );
+}
+.rotation2 {
+  color: light-dark(
     /* hsv(80° 60% 80%) */
-    color: rgb(164, 205, 82);
-  }
-  .rotation3 {
+    rgb(164, 205, 82),
+    rgb(0, 212, 0)
+  );
+}
+.rotation3 {
+  color: light-dark(
     /* hsv(120° 60% 80%) */
-    color: rgb(82, 205, 82);
-  }
-  .rotation4 {
+    rgb(82, 205, 82),
+    red
+  );
+}
+.rotation4 {
+  color: light-dark(
     /* hsv(160° 60% 80%) */
-    color: rgb(82, 205, 164);
-  }
-  .rotation5 {
+    rgb(82, 205, 164),
+    rgb(103, 106, 255)
+  );
+}
+.rotation5 {
+  color: light-dark(
     /* hsv(200° 60% 80%) */
-    color: rgb(82, 164, 205);
-  }
-  .rotation6 {
+    rgb(82, 164, 205),
+    lightpink
+  );
+}
+.rotation6 {
+  color: light-dark(
     /* hsv(240° 60% 80%) */
-    color: rgb(82, 82, 205);
-  }
-  .rotation7 {
+    rgb(82, 82, 205),
+    lightcyan
+  );
+}
+.rotation7 {
+  color: light-dark(
     /* hsv(280° 60% 80%) */
-    color: rgb(164, 82, 205);
-  }
-  .rotation8 {
+    rgb(164, 82, 205),
+    lightgreen
+  );
+}
+.rotation8 {
+  color: light-dark(
     /* hsv(320° 60% 80%) */
-    color: rgb(205, 82, 164);
-  }
-  .symbol {
-    color: black;
-  }
+    rgb(205, 82, 164),
+    grey
+  );
 }

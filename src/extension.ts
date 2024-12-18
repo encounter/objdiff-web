@@ -1,5 +1,6 @@
 import * as picomatch from 'picomatch';
 import * as vscode from 'vscode';
+import type { InboundMessage, OutboundMessage } from '../shared/messages';
 import { DEFAULT_WATCH_PATTERNS, type ObjdiffConfiguration } from './config';
 
 const CONFIG_FILENAME = 'objdiff.json';
@@ -7,13 +8,21 @@ const CONFIG_FILENAME = 'objdiff.json';
 export class ObjdiffWorkspace extends vscode.Disposable {
   public config?: ObjdiffConfiguration;
   public configWatcher: vscode.FileSystemWatcher;
+  public currentFile?: string;
   public workspaceWatcher?: vscode.FileSystemWatcher;
+  public onDidChangeConfig: vscode.Event<ObjdiffConfiguration | undefined>;
+  public onDidChangeCurrentFile: vscode.Event<string | undefined>;
 
   private subscriptions: vscode.Disposable[] = [];
   private wwSubscriptions: vscode.Disposable[] = [];
-  private currentDiff?: vscode.Uri;
   // private currentTask?: () => void;
   private pathMatcher?: picomatch.Matcher;
+  private didChangeConfigEmitter = new vscode.EventEmitter<
+    ObjdiffConfiguration | undefined
+  >();
+  private didChangeCurrentFileEmitter = new vscode.EventEmitter<
+    string | undefined
+  >();
 
   constructor(
     public readonly chan: vscode.LogOutputChannel,
@@ -23,6 +32,9 @@ export class ObjdiffWorkspace extends vscode.Disposable {
     super(() => {
       this.disposeImpl();
     });
+    this.onDidChangeConfig = this.didChangeConfigEmitter.event;
+    this.onDidChangeCurrentFile = this.didChangeCurrentFileEmitter.event;
+
     this.configWatcher = vscode.workspace.createFileSystemWatcher(
       new vscode.RelativePattern(workspaceFolder, CONFIG_FILENAME),
     );
@@ -139,6 +151,7 @@ export class ObjdiffWorkspace extends vscode.Disposable {
         this.wwSubscriptions,
       );
     }
+    this.didChangeConfigEmitter.fire(this.config);
     this.tryDiff();
   }
 
@@ -156,25 +169,22 @@ export class ObjdiffWorkspace extends vscode.Disposable {
     this.tryDiff();
   }
 
-  tryDiff() {
+  private tryUpdateActiveFile() {
     if (!this.config) {
       return;
     }
-    if (!this.currentDiff) {
-      const activeEditor = vscode.window.activeTextEditor;
-      if (!activeEditor) {
-        this.chan.warn('No active editor');
-        return;
-      }
-      if (activeEditor.document.uri.scheme !== 'file') {
-        this.chan.warn('Active editor not a file');
-        return;
-      }
-      this.currentDiff = activeEditor.document.uri;
+    const activeEditor = vscode.window.activeTextEditor;
+    if (!activeEditor) {
+      this.chan.warn('No active editor');
+      return;
     }
-    const fsPath = this.currentDiff.fsPath;
+    if (activeEditor.document.uri.scheme !== 'file') {
+      this.chan.warn('Active editor not a file');
+      return;
+    }
+    const fsPath = activeEditor.document.uri.fsPath;
     if (!fsPath.startsWith(this.workspaceFolder.uri.fsPath)) {
-      this.chan.warn('Active editor not in workspace');
+      this.chan.warn('Active editor not in workspace', fsPath);
       return;
     }
     const relPath = fsPath.slice(this.workspaceFolder.uri.fsPath.length + 1);
@@ -182,7 +192,27 @@ export class ObjdiffWorkspace extends vscode.Disposable {
       (obj) => obj.metadata?.source_path === relPath,
     );
     if (!obj) {
-      this.chan.warn('No object found for', relPath);
+      this.chan.warn('No object found for', this.currentFile);
+      return;
+    }
+    this.currentFile = relPath;
+    this.didChangeCurrentFileEmitter.fire(this.currentFile);
+  }
+
+  tryDiff() {
+    if (!this.config) {
+      return;
+    }
+    this.tryUpdateActiveFile();
+    if (!this.currentFile) {
+      this.chan.warn('No active file');
+      return;
+    }
+    const obj = (this.config.units || this.config.objects)?.find(
+      (obj) => obj.metadata?.source_path === this.currentFile,
+    );
+    if (!obj) {
+      this.chan.warn('No object found for', this.currentFile);
       return;
     }
     const targetPath =
@@ -252,6 +282,7 @@ export class ObjdiffWorkspace extends vscode.Disposable {
     const task = new vscode.Task(
       {
         type: 'objdiff',
+        taskType: 'build',
         startTime,
       },
       this.workspaceFolder,
@@ -312,6 +343,11 @@ export function activate(context: vscode.ExtensionContext) {
   // const storageDir = storageUri.fsPath;
   // chan.info('Storage directory: ' + storageDir);
 
+  const webviews: {
+    webview: vscode.Webview;
+    subscriptions: vscode.Disposable[];
+  }[] = [];
+
   let workspace: ObjdiffWorkspace | undefined;
   if (vscode.workspace.workspaceFolders?.[0]) {
     workspace = new ObjdiffWorkspace(
@@ -319,18 +355,63 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.workspace.workspaceFolders[0],
       storageUri,
     );
+    workspace.onDidChangeConfig(
+      (config) => {
+        for (const view of webviews) {
+          view.webview.postMessage({
+            type: 'state',
+            configLoaded: !!config,
+            currentFile: workspace?.currentFile || null,
+          } as InboundMessage);
+        }
+      },
+      undefined,
+      context.subscriptions,
+    );
+    workspace.onDidChangeCurrentFile(
+      (currentFile) => {
+        for (const view of webviews) {
+          view.webview.postMessage({
+            type: 'state',
+            configLoaded: !!workspace?.config,
+            currentFile,
+          } as InboundMessage);
+        }
+      },
+      undefined,
+      context.subscriptions,
+    );
     context.subscriptions.push(workspace);
   }
+  chan.info('Workspace folders', vscode.workspace.workspaceFolders);
+  vscode.workspace.onDidChangeWorkspaceFolders(
+    (e) => {
+      chan.info('Workspace folders changed', e);
+    },
+    undefined,
+    context.subscriptions,
+  );
 
   context.subscriptions.push(
     vscode.commands.registerCommand('objdiff.build', () => {
-      if (workspace) {
-        workspace.tryDiff();
-      }
+      workspace?.tryDiff();
     }),
   );
-
-  const webviews: vscode.Webview[] = [];
+  context.subscriptions.push(
+    vscode.commands.registerCommand('objdiff.copySymbolName', (opts) => {
+      chan.info('Copy command', opts);
+      vscode.env.clipboard.writeText(opts.symbolName);
+    }),
+  );
+  context.subscriptions.push(
+    vscode.commands.registerCommand(
+      'objdiff.copySymbolDemangledName',
+      (opts) => {
+        chan.info('Copy demangled command', opts);
+        vscode.env.clipboard.writeText(opts.symbolDemangledName);
+      },
+    ),
+  );
 
   const backgroundColors = [
     'rgba(255, 0, 255, 0.3)',
@@ -350,8 +431,42 @@ export function activate(context: vscode.ExtensionContext) {
     });
   });
 
-  context.subscriptions.push(
-    vscode.tasks.onDidEndTaskProcess(async (e) => {
+  vscode.tasks.onDidStartTask(
+    (e) => {
+      if (e.execution.task.definition.type !== 'objdiff') {
+        return;
+      }
+      for (const view of webviews) {
+        view.webview.postMessage({
+          type: 'task',
+          taskType: e.execution.task.definition.taskType,
+          running: true,
+        } as InboundMessage);
+      }
+    },
+    undefined,
+    context.subscriptions,
+  );
+  vscode.tasks.onDidEndTask(
+    (e) => {
+      if (e.execution.task.definition.type !== 'objdiff') {
+        return;
+      }
+      for (const view of webviews) {
+        view.webview.postMessage({
+          type: 'task',
+          taskType: e.execution.task.definition.taskType,
+          running: false,
+        } as InboundMessage);
+      }
+    },
+    undefined,
+    context.subscriptions,
+  );
+
+  let cachedData: Uint8Array | null = null;
+  vscode.tasks.onDidEndTaskProcess(
+    async (e) => {
       if (e.execution.task.definition.type !== 'objdiff') {
         return;
       }
@@ -373,18 +488,15 @@ export function activate(context: vscode.ExtensionContext) {
             'with size',
             data.byteLength,
           );
-          //   const diff = diff_pb.DiffResult.fromBinary(data);
-          //   treeDataProvider.update(diff);
-          // vscode.window.showInformationMessage('Diff complete');
-          // console.log('webviews', webviews);
-          for (const webview of webviews) {
-            webview.postMessage({
+          for (const view of webviews) {
+            view.webview.postMessage({
               type: 'diff',
               data: data.buffer,
-            });
+            } as InboundMessage);
           }
+          cachedData = data;
         } catch (reason) {
-          chan.error('Failed to read output file', reason);
+          workspace?.showError('Failed to read output file', reason);
         }
       } else {
         workspace?.showError(`Build failed with code ${e.exitCode}`);
@@ -392,10 +504,12 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.workspace.fs.delete(outputUri).then(
         () => {},
         (reason) => {
-          chan.error('Failed to delete output file', reason);
+          workspace?.showError('Failed to delete output file', reason);
         },
       );
-    }),
+    },
+    undefined,
+    context.subscriptions,
   );
 
   const textDecoder = new TextDecoder();
@@ -423,10 +537,24 @@ export function activate(context: vscode.ExtensionContext) {
           enableScripts: true,
         };
         view.webview.html = html;
-        context.subscriptions.push(
-          view.webview.onDidReceiveMessage((message) => {
+        const subscriptions: vscode.Disposable[] = [];
+        view.webview.onDidReceiveMessage(
+          (untypedMessage) => {
+            const message = untypedMessage as OutboundMessage;
             if (message.type === 'ready') {
               chan.info('Webview ready');
+              view.webview.postMessage({
+                type: 'state',
+                configLoaded: !!workspace?.config,
+                currentFile: workspace?.currentFile || null,
+              } as InboundMessage);
+              if (cachedData) {
+                chan.info('Sending cached diff to webview');
+                view.webview.postMessage({
+                  type: 'diff',
+                  data: cachedData.buffer,
+                } as InboundMessage);
+              }
             } else if (message.type === 'lineRanges') {
               for (const editor of vscode.window.visibleTextEditors) {
                 if (editor.document.uri.scheme !== 'file') {
@@ -444,18 +572,38 @@ export function activate(context: vscode.ExtensionContext) {
                   idx = (idx + 1) % decorationTypes.length;
                 }
               }
+            } else if (message.type === 'runTask') {
+              if (message.taskType === 'build') {
+                workspace?.tryDiff();
+              } else {
+                chan.warn('Unknown task type', message.taskType);
+              }
+            } else {
+              chan.warn('Unknown message', message);
             }
-          }),
+          },
+          undefined,
+          subscriptions,
         );
-        context.subscriptions.push(
-          view.onDidDispose(() => {
-            const idx = webviews.indexOf(view.webview);
-            if (idx >= 0) {
-              webviews.splice(idx, 1);
+        view.onDidDispose(
+          () => {
+            for (const sub of subscriptions) {
+              sub.dispose();
             }
-          }),
+            for (let i = 0; i < webviews.length; i++) {
+              if (webviews[i].webview === view.webview) {
+                webviews.splice(i, 1);
+                break;
+              }
+            }
+          },
+          undefined,
+          context.subscriptions,
         );
-        webviews.push(view.webview);
+        webviews.push({
+          webview: view.webview,
+          subscriptions,
+        });
       },
     }),
   );
