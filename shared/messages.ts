@@ -1,6 +1,9 @@
+import type { ObjdiffConfiguration, Unit } from './config';
+
 export type DiffMessage = {
   type: 'diff';
-  data: ArrayBuffer;
+  data: ArrayBuffer | null;
+  currentUnit: Unit | null;
 };
 
 export type TaskMessage = {
@@ -11,8 +14,7 @@ export type TaskMessage = {
 
 export type StateMessage = {
   type: 'state';
-  configLoaded: boolean;
-  currentFile: string | null;
+  config: ObjdiffConfiguration | null;
 };
 
 // extension -> webview
@@ -32,5 +34,19 @@ export type RunTaskMessage = {
   taskType: string;
 };
 
+export type SetCurrentUnitMessage = {
+  type: 'setCurrentUnit';
+  unit: Unit | 'source' | null;
+};
+
+export type QuickPickUnitMessage = {
+  type: 'quickPickUnit';
+};
+
 // webview -> extension
-export type OutboundMessage = ReadyMessage | LineRangesMessage | RunTaskMessage;
+export type OutboundMessage =
+  | ReadyMessage
+  | LineRangesMessage
+  | RunTaskMessage
+  | SetCurrentUnitMessage
+  | QuickPickUnitMessage;

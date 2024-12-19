@@ -39,20 +39,26 @@
   "engines": {
     "vscode": "^1.96.0"
   },
-  "browserslist": [
-    "chrome 128"
-  ],
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "*"
-  ],
+  "browserslist": ["chrome 128"],
+  "categories": ["Other"],
+  "activationEvents": ["*"],
   "contributes": {
     "commands": [
       {
         "command": "objdiff.build",
-        "title": "objdiff: build"
+        "title": "objdiff: Build"
+      },
+      {
+        "command": "objdiff.chooseUnit",
+        "title": "objdiff: Choose Unit"
+      },
+      {
+        "command": "objdiff.clearUnit",
+        "title": "objdiff: Clear Current Unit"
+      },
+      {
+        "command": "objdiff.chooseCurrentFile",
+        "title": "objdiff: Switch To Current File"
       },
       {
         "command": "objdiff.copySymbolName",

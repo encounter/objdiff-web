@@ -179,4 +179,39 @@ export interface ProgressCategory {
   name?: string;
 }
 
-export function loadConfig() {}
+export function resolveConfig(config: ObjdiffConfiguration) {
+  if (config.watch_patterns === undefined) {
+    config.watch_patterns = DEFAULT_WATCH_PATTERNS;
+  }
+  if (config.build_target === undefined) {
+    config.build_target = false;
+  }
+  if (config.build_base === undefined) {
+    config.build_base = true;
+  }
+  if (config.units === undefined) {
+    config.units = config.objects || [];
+  }
+  for (const unit of config.units || []) {
+    unit.name = unit.name || unit.path || '<unnamed>';
+    if (unit.path) {
+      if (config.target_dir && !unit.target_path) {
+        unit.target_path = `${config.target_dir}/${unit.path}`;
+      }
+      if (config.base_dir && !unit.base_path) {
+        unit.base_path = `${config.base_dir}/${unit.path}`;
+      }
+    }
+    unit.metadata = unit.metadata || {};
+    if (unit.complete !== undefined && unit.metadata.complete === undefined) {
+      unit.metadata.complete = unit.complete;
+    }
+    if (
+      unit.reverse_fn_order !== undefined &&
+      unit.metadata.reverse_fn_order === undefined
+    ) {
+      unit.metadata.reverse_fn_order = unit.reverse_fn_order;
+    }
+  }
+  return config;
+}

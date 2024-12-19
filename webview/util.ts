@@ -1,3 +1,5 @@
+import styles from './util.module.css';
+
 import { useEffect, useState } from 'react';
 
 export const getCssVariablePx = (name: string) => {
@@ -29,4 +31,14 @@ export const useFontSize = () => {
     };
   }, []);
   return fontSize;
+};
+
+export const percentClass = (percent: number) => {
+  if (percent === 100) {
+    return styles.percent100;
+  }
+  if (percent >= 50) {
+    return styles.percent50;
+  }
+  return styles.percent0;
 };

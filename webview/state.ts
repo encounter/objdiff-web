@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import type { ObjdiffConfiguration, Unit } from '../shared/config';
 import { DiffResult } from '../shared/gen/diff_pb';
 import type { InboundMessage, OutboundMessage } from '../shared/messages';
 
@@ -7,15 +8,30 @@ export type SymbolRefByName = {
   section_name: string | null;
 };
 
+export type FileScrollOffsets = {
+  left: number;
+  right: number;
+};
+
 export interface AppState {
   selectedSymbol: SymbolRefByName | null;
   symbolScrollOffsets: Record<string, number>;
+  fileScrollOffsets: Record<string, FileScrollOffsets>;
+  unitsScrollOffset: number;
   setSelectedSymbol: (selectedSymbol: SymbolRefByName | null) => void;
   setSymbolScrollOffset: (symbolName: string, offset: number) => void;
+  setFileScrollOffset: (
+    fileName: string,
+    side: keyof FileScrollOffsets,
+    offset: number,
+  ) => void;
+  setUnitsScrollOffset: (offset: number) => void;
 }
 export const useAppStore = create<AppState>((set) => ({
   selectedSymbol: null,
   symbolScrollOffsets: {},
+  fileScrollOffsets: {},
+  unitsScrollOffset: 0,
   setSelectedSymbol: (selectedSymbol) => set({ selectedSymbol }),
   setSymbolScrollOffset: (symbolName, offset) =>
     set((state) => ({
@@ -24,19 +40,30 @@ export const useAppStore = create<AppState>((set) => ({
         [symbolName]: offset,
       },
     })),
+  setFileScrollOffset: (fileName, side, offset) =>
+    set((state) => ({
+      fileScrollOffsets: {
+        ...state.fileScrollOffsets,
+        [fileName]: {
+          ...state.fileScrollOffsets[fileName],
+          [side]: offset,
+        },
+      },
+    })),
+  setUnitsScrollOffset: (offset) => set({ unitsScrollOffset: offset }),
 }));
 
 export type ExtensionState = {
   diff: DiffResult | null;
   buildRunning: boolean;
-  configLoaded: boolean;
-  currentFile: string | null;
+  config: ObjdiffConfiguration | null;
+  currentUnit: Unit | null;
 };
 export const useExtensionStore = create<ExtensionState>(() => ({
   diff: null,
   buildRunning: false,
-  configLoaded: false,
-  currentFile: null,
+  config: null,
+  currentUnit: null,
 }));
 
 // Copy of vscode.WebviewApi with concrete message types
@@ -81,6 +108,11 @@ export { vscode };
 window.addEventListener('message', (event) => {
   const message = event.data as InboundMessage;
   if (message.type === 'diff') {
+    if (!message.data) {
+      useExtensionStore.setState({ diff: null, currentUnit: null });
+      return;
+    }
+
     const start = performance.now();
     const diff = DiffResult.fromBinary(new Uint8Array(message.data));
     const end = performance.now();
@@ -118,7 +150,7 @@ window.addEventListener('message', (event) => {
     // console.log('lineRanges', lineRanges);
     // vscode.postMessage({ type: 'lineRanges', data: lineRanges });
 
-    useExtensionStore.setState({ diff });
+    useExtensionStore.setState({ diff, currentUnit: message.currentUnit });
   } else if (message.type === 'task') {
     if (message.taskType === 'build') {
       useExtensionStore.setState({ buildRunning: message.running });
@@ -127,8 +159,7 @@ window.addEventListener('message', (event) => {
     }
   } else if (message.type === 'state') {
     useExtensionStore.setState({
-      configLoaded: message.configLoaded,
-      currentFile: message.currentFile,
+      config: message.config,
     });
   } else {
     console.error('Unknown message', message);

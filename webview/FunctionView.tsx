@@ -2,7 +2,7 @@ import styles from './FunctionView.module.css';
 import headerStyles from './Header.module.css';
 
 import clsx from 'clsx';
-import memoize from 'memoize-one';
+import memoizeOne from 'memoize-one';
 import { memo, useMemo } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, areEqual } from 'react-window';
@@ -14,8 +14,8 @@ import type {
   SymbolDiff,
 } from '../shared/gen/diff_pb';
 import { displayDiff } from './diff';
-import { useAppStore } from './state';
-import { useFontSize } from './util';
+import { useAppStore, useExtensionStore, vscode } from './state';
+import { percentClass, useFontSize } from './util';
 
 const AsmCell = ({
   insDiff,
@@ -169,7 +169,7 @@ const AsmRow = memo(
     const leftIns = left?.instructions[index];
     const rightIns = right?.instructions[index];
     return (
-      <div key={index} className={styles.instructionRow} style={style}>
+      <div className={styles.instructionRow} style={style}>
         <AsmCell insDiff={leftIns} symbol={left?.symbol} />
         <AsmCell insDiff={rightIns} symbol={right?.symbol} />
       </div>
@@ -178,8 +178,8 @@ const AsmRow = memo(
   areEqual,
 );
 
-const createItemData = memoize(
-  (left: SymbolDiff | null, right: SymbolDiff | null) => {
+const createItemData = memoizeOne(
+  (left: SymbolDiff | null, right: SymbolDiff | null): ItemData => {
     const itemCount = Math.max(
       left?.instructions.length || 0,
       right?.instructions.length || 0,
@@ -192,6 +192,7 @@ const FunctionView = ({
   left,
   right,
 }: { left: SymbolDiff | null; right: SymbolDiff | null }) => {
+  const buildRunning = useExtensionStore((state) => state.buildRunning);
   const setSelectedSymbol = useAppStore((state) => state.setSelectedSymbol);
   const setSymbolScrollOffset = useAppStore(
     (state) => state.setSymbolScrollOffset,
@@ -206,11 +207,23 @@ const FunctionView = ({
   const itemSize = useFontSize() * 1.33;
   const itemData = createItemData(left, right);
   const demangledName =
-    left?.symbol?.demangled_name || right?.symbol?.demangled_name;
+    left?.symbol?.demangled_name || right?.symbol?.demangled_name || symbolName;
+  const matchPercent = right?.match_percent || 0;
   return (
     <>
       <div className={headerStyles.header}>
         <button onClick={() => setSelectedSymbol(null)}>Back</button>
+        <button
+          onClick={() =>
+            vscode.postMessage({ type: 'runTask', taskType: 'build' })
+          }
+          disabled={buildRunning}
+        >
+          Build
+        </button>
+        <span className={percentClass(matchPercent)}>
+          {Math.floor(matchPercent).toFixed(0)}%
+        </span>
         <span title={demangledName}>{demangledName}</span>
       </div>
       <div className={styles.instructionList}>

@@ -8,7 +8,8 @@ import type {
 } from '../shared/gen/diff_pb';
 import FunctionView from './FunctionView';
 import SymbolsView from './SymbolsView';
-import { useAppStore, useExtensionStore, vscode } from './state';
+import UnitsView from './UnitsView';
+import { useAppStore, useExtensionStore } from './state';
 import type { SymbolRefByName } from './state';
 
 const findSymbol = (
@@ -36,8 +37,7 @@ const findSymbol = (
 const App = () => {
   const { diff } = useExtensionStore();
   const selectedSymbolRef = useAppStore((state) => state.selectedSymbol);
-  const buildRunning = useExtensionStore((state) => state.buildRunning);
-  const configLoaded = useExtensionStore((state) => state.configLoaded);
+  const config = useExtensionStore((state) => state.config);
 
   if (diff) {
     const leftSymbol = findSymbol(diff.left, selectedSymbolRef);
@@ -48,25 +48,12 @@ const App = () => {
     return <SymbolsView diff={diff} />;
   }
 
-  return (
+  return config ? (
+    <UnitsView />
+  ) : (
     <div className="content">
       <h1>objdiff</h1>
-      {configLoaded ? (
-        <p>
-          Open a source file and{' '}
-          <button
-            onClick={() =>
-              vscode.postMessage({ type: 'runTask', taskType: 'build' })
-            }
-            disabled={buildRunning}
-          >
-            Build
-          </button>
-          .
-        </p>
-      ) : (
-        <p>No configuration loaded.</p>
-      )}
+      <p>No configuration loaded.</p>
     </div>
   );
 };

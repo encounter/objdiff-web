@@ -8,6 +8,7 @@
   border-bottom: 1px solid var(--vscode-menu-separatorBackground);
 
   > span {
+    color: light-dark(black, white);
     font-family: var(--vscode-editor-font-family, monospace);
     font-weight: var(--vscode-editor-font-weight, normal);
     font-size: var(--font-size);
