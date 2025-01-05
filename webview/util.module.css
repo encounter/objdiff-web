@@ -1,9 +1,12 @@
 .percent-100 {
-  color: lightgreen !important;
+  color: var(--color-green) !important;
+  flex-shrink: 0;
 }
 .percent-50 {
-  color: lightblue !important;
+  color: var(--color-blue) !important;
+  flex-shrink: 0;
 }
 .percent-0 {
-  color: lightcoral !important;
+  color: var(--color-red) !important;
+  flex-shrink: 0;
 }

@@ -1,20 +1,39 @@
 .header {
   display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.5em;
   padding: 0.5em;
-  background-color: var(--vscode-panel-background);
-  border-bottom: 1px solid var(--vscode-menu-separatorBackground);
+  gap: 0.5em;
+  background-color: var(--panel-background);
+  border-bottom: 1px solid var(--panel-separator);
+}
 
-  > span {
-    color: light-dark(black, white);
-    font-family: var(--vscode-editor-font-family, monospace);
-    font-weight: var(--vscode-editor-font-weight, normal);
-    font-size: var(--font-size);
-    text-wrap: nowrap;
-    white-space: pre;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+.column {
+  display: flex;
+  flex: 1 1 0;
+  gap: 0.5em;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.row {
+  display: flex;
+  gap: 0.5em;
+  align-items: center;
+}
+
+.label {
+  font-family: var(--code-font-family);
+  font-weight: var(--code-font-weight);
+  font-size: var(--code-font-size);
+  text-wrap: nowrap;
+  white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.emphasized {
+  color: light-dark(black, white);
+}
+
+.missing {
+  color: var(--color-blue);
 }

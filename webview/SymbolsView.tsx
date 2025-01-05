@@ -2,6 +2,7 @@ import headerStyles from './Header.module.css';
 import styles from './SymbolsView.module.css';
 
 import clsx from 'clsx';
+import 'core-js/features/regexp/escape';
 import memoizeOne from 'memoize-one';
 import { memo, useMemo } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
@@ -10,6 +11,7 @@ import {
   type ListChildComponentProps,
   areEqual,
 } from 'react-window';
+import { useShallow } from 'zustand/react/shallow';
 import {
   type DiffResult,
   type Symbol as DiffSymbol,
@@ -18,13 +20,24 @@ import {
   type SymbolDiff,
   SymbolFlag,
 } from '../shared/gen/diff_pb';
-import { useAppStore, useExtensionStore, vscode } from './state';
+import {
+  UnitScrollOffsets,
+  runBuild,
+  setCurrentUnit,
+  useAppStore,
+  useExtensionStore,
+} from './state';
 import { percentClass, useFontSize } from './util';
 
 const SectionRow = ({
   section,
   style,
-}: { section: SectionDiff; style?: React.CSSProperties }) => {
+  onClick,
+}: {
+  section: SectionData;
+  style?: React.CSSProperties;
+  onClick?: React.MouseEventHandler<HTMLDivElement>;
+}) => {
   let percentElem = null;
   if (section.match_percent != null) {
     percentElem = (
@@ -38,7 +51,13 @@ const SectionRow = ({
     );
   }
   return (
-    <div className={clsx(styles.symbolListRow, styles.section)} style={style}>
+    <div
+      className={clsx(styles.symbolListRow, styles.section, {
+        [styles.collapsed]: section.collapsed,
+      })}
+      style={style}
+      onClick={onClick}
+    >
       {section.name} ({section.size.toString(16)}){percentElem}
     </div>
   );
@@ -122,27 +141,54 @@ const SymbolRow = ({
   );
 };
 
+type SectionData = SectionDiff & { id: string; collapsed: boolean };
+
 type ItemData = {
+  exists: boolean;
   itemCount: number;
-  sections: SectionDiff[];
+  sections: SectionData[];
+  setSectionCollapsed: (section: string, collapsed: boolean) => void;
+};
+
+const searchMatches = (
+  searchRegex: RegExp | null,
+  symbolDiff: SymbolDiff,
+): boolean => {
+  if (!searchRegex) {
+    return true;
+  }
+  const symbol = symbolDiff.symbol as DiffSymbol;
+  return (
+    searchRegex.test(symbol.name) ||
+    (symbol.demangled_name && searchRegex.test(symbol.demangled_name)) ||
+    false
+  );
 };
 
 const SymbolListRow = memo(
-  ({ index, style, data: { sections } }: ListChildComponentProps<ItemData>) => {
+  ({
+    index,
+    style,
+    data: { sections, setSectionCollapsed },
+  }: ListChildComponentProps<ItemData>) => {
     let currentIndex = 0;
     for (const section of sections) {
       if (currentIndex === index) {
-        return <SectionRow section={section} style={style} />;
-      }
-      currentIndex++;
-      if (index < currentIndex + section.symbols.length) {
         return (
-          <SymbolRow
+          <SectionRow
             section={section}
-            diff={section.symbols[index - currentIndex]}
             style={style}
+            onClick={() => setSectionCollapsed(section.id, !section.collapsed)}
           />
         );
+      }
+      currentIndex++;
+      if (section.collapsed) {
+        continue;
+      }
+      if (index < currentIndex + section.symbols.length) {
+        const symbolDiff = section.symbols[index - currentIndex];
+        return <SymbolRow section={section} diff={symbolDiff} style={style} />;
       }
       currentIndex += section.symbols.length;
     }
@@ -151,112 +197,211 @@ const SymbolListRow = memo(
   areEqual,
 );
 
-const createItemDataFn = (obj: ObjectDiff | undefined): ItemData => {
+const createItemDataFn = (
+  obj: ObjectDiff | undefined,
+  collapsedSections: Record<string, boolean>,
+  search: string | null,
+  setSectionCollapsed: (section: string, collapsed: boolean) => void,
+): ItemData => {
   if (!obj) {
-    return { itemCount: 0, sections: [] };
+    return {
+      exists: false,
+      itemCount: 0,
+      sections: [],
+      setSectionCollapsed,
+    };
   }
   let itemCount = 0;
-  for (const section of obj.sections) {
-    itemCount += section.symbols.length + 1;
+  const sections: SectionData[] = [];
+  const sectionCounts = new Map<string, number>();
+  let searchRegex: RegExp | null = null;
+  if (search) {
+    try {
+      searchRegex = new RegExp(search, 'i');
+    } catch (e) {
+      // Invalid regex, use it as a plain text search
+      searchRegex = new RegExp(RegExp.escape(search), 'i');
+    }
   }
-  return { itemCount, sections: obj.sections };
+  for (const section of obj.sections) {
+    itemCount++;
+    const count = sectionCounts.get(section.name) || 0;
+    sectionCounts.set(section.name, count + 1);
+    const id = `${section.name}-${count}`;
+    const symbols = section.symbols.filter((s) =>
+      searchMatches(searchRegex, s),
+    );
+    if (searchRegex !== null && symbols.length === 0) {
+      continue;
+    }
+    if (collapsedSections[id]) {
+      sections.push({
+        ...section,
+        symbols: [],
+        id,
+        collapsed: true,
+      });
+      continue;
+    }
+    itemCount += symbols.length;
+    sections.push({
+      ...section,
+      symbols,
+      id,
+      collapsed: false,
+    });
+  }
+  return {
+    exists: true,
+    itemCount,
+    sections,
+    setSectionCollapsed,
+  };
 };
 const createItemDataLeft = memoizeOne(createItemDataFn);
 const createItemDataRight = memoizeOne(createItemDataFn);
 
 const SymbolsView = ({ diff }: { diff: DiffResult }) => {
-  const buildRunning = useExtensionStore((state) => state.buildRunning);
-  const currentUnit = useExtensionStore((state) => state.currentUnit);
-
+  const { buildRunning, currentUnit } = useExtensionStore(
+    useShallow((state) => ({
+      buildRunning: state.buildRunning,
+      currentUnit: state.currentUnit,
+    })),
+  );
   const currentUnitName = currentUnit?.name || '';
-  const setFileScrollOffset = useAppStore((state) => state.setFileScrollOffset);
-  const { left: leftInitialScrollOffset, right: rightInitialScrollOffset } =
-    useMemo(
-      () =>
-        (currentUnitName &&
-          useAppStore.getState().fileScrollOffsets[currentUnitName]) || {
-          left: 0,
-          right: 0,
-        },
-      [currentUnitName],
+  const {
+    collapsedSections,
+    search,
+    setUnitSectionCollapsed,
+    setUnitScrollOffset,
+    setUnitSearch,
+  } = useAppStore(
+    useShallow((state) => {
+      const unit = state.getUnitState(currentUnitName);
+      return {
+        collapsedSections: unit.collapsedSections,
+        search: unit.search,
+        setUnitSectionCollapsed: state.setUnitSectionCollapsed,
+        setUnitScrollOffset: state.setUnitScrollOffset,
+        setUnitSearch: state.setUnitSearch,
+      };
+    }),
+  );
+  const initialScrollOffsets = useMemo(
+    () => useAppStore.getState().getUnitState(currentUnitName).scrollOffsets,
+    [currentUnitName],
+  );
+  const setLeftSectionCollapsed = useMemo(
+    () => (section: string, collapsed: boolean) => {
+      setUnitSectionCollapsed(currentUnitName, section, 'left', collapsed);
+    },
+    [currentUnitName, setUnitSectionCollapsed],
+  );
+  const setRightSectionCollapsed = useMemo(
+    () => (section: string, collapsed: boolean) => {
+      setUnitSectionCollapsed(currentUnitName, section, 'right', collapsed);
+    },
+    [currentUnitName, setUnitSectionCollapsed],
+  );
+
+  const renderList = (
+    height: number,
+    width: number,
+    itemData: ItemData,
+    side: keyof UnitScrollOffsets,
+  ) => {
+    if (!itemData.exists) {
+      return (
+        <div className={clsx(styles.symbolList, styles.noObject)}>
+          No object configured
+        </div>
+      );
+    }
+    return (
+      <FixedSizeList
+        key={`${side}-${currentUnitName}`}
+        className={styles.symbolList}
+        height={height}
+        itemCount={itemData.itemCount}
+        itemSize={itemSize}
+        width={width / 2}
+        itemData={itemData}
+        overscanCount={20}
+        onScroll={(e) => {
+          if (currentUnitName) {
+            setUnitScrollOffset(currentUnitName, side, e.scrollOffset);
+          }
+        }}
+        initialScrollOffset={initialScrollOffsets[side]}
+      >
+        {SymbolListRow}
+      </FixedSizeList>
     );
+  };
 
   const itemSize = useFontSize() * 1.33;
-  const leftItemData = createItemDataLeft(diff.left);
-  const rightItemData = createItemDataRight(diff.right);
+  const leftItemData = createItemDataLeft(
+    diff.left,
+    collapsedSections.left,
+    search,
+    setLeftSectionCollapsed,
+  );
+  const rightItemData = createItemDataRight(
+    diff.right,
+    collapsedSections.right,
+    search,
+    setRightSectionCollapsed,
+  );
   return (
     <>
       <div className={headerStyles.header}>
-        <button
-          onClick={() =>
-            vscode.postMessage({ type: 'setCurrentUnit', unit: null })
-          }
-          disabled={buildRunning}
-        >
-          Back
-        </button>
-        <button
-          onClick={() =>
-            vscode.postMessage({ type: 'runTask', taskType: 'build' })
-          }
-          disabled={buildRunning}
-        >
-          Build
-        </button>
-        {buildRunning ? (
-          <span>Building...</span>
-        ) : (
-          <span>{currentUnitName}</span>
-        )}
+        <div className={headerStyles.column}>
+          <div className={headerStyles.row}>
+            <button
+              title="Back"
+              onClick={() => setCurrentUnit(null)}
+              disabled={buildRunning}
+            >
+              <span className="codicon codicon-chevron-left" />
+            </button>
+            <span className={headerStyles.label}>Target object</span>
+          </div>
+          <div className={headerStyles.row}>
+            <span className={clsx(headerStyles.label, headerStyles.emphasized)}>
+              {currentUnitName}
+            </span>
+          </div>
+        </div>
+        <div className={headerStyles.column}>
+          <div className={headerStyles.row}>
+            <button
+              title="Build"
+              onClick={() => runBuild()}
+              disabled={buildRunning}
+            >
+              <span className="codicon codicon-refresh" />
+            </button>
+            <span className={headerStyles.label}>Base object</span>
+          </div>
+          <div className={headerStyles.row}>
+            <input
+              type="text"
+              placeholder="Filter symbols"
+              value={search || ''}
+              onChange={(e) => {
+                const value = e.target.value;
+                setUnitSearch(currentUnitName, value);
+              }}
+            />
+          </div>
+        </div>
       </div>
       <div className={styles.symbols}>
         <AutoSizer className={styles.symbols}>
           {({ height, width }) => (
             <>
-              <FixedSizeList
-                key={`left-${currentUnitName}`}
-                className={styles.symbolList}
-                height={height}
-                itemCount={leftItemData.itemCount}
-                itemSize={itemSize}
-                width={width / 2}
-                itemData={leftItemData}
-                overscanCount={20}
-                onScroll={(e) => {
-                  if (currentUnitName) {
-                    setFileScrollOffset(
-                      currentUnitName,
-                      'left',
-                      e.scrollOffset,
-                    );
-                  }
-                }}
-                initialScrollOffset={leftInitialScrollOffset}
-              >
-                {SymbolListRow}
-              </FixedSizeList>
-              <FixedSizeList
-                key={`right-${currentUnitName}`}
-                className={styles.symbolList}
-                height={height}
-                itemCount={rightItemData.itemCount}
-                itemSize={itemSize}
-                width={width / 2}
-                itemData={rightItemData}
-                overscanCount={20}
-                onScroll={(e) => {
-                  if (currentUnitName) {
-                    setFileScrollOffset(
-                      currentUnitName,
-                      'right',
-                      e.scrollOffset,
-                    );
-                  }
-                }}
-                initialScrollOffset={rightInitialScrollOffset}
-              >
-                {SymbolListRow}
-              </FixedSizeList>
+              {renderList(height, width, leftItemData, 'left')}
+              {renderList(height, width, rightItemData, 'right')}
             </>
           )}
         </AutoSizer>

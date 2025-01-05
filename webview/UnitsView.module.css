@@ -2,30 +2,57 @@
   flex: 1 1 0;
   display: flex;
   flex-flow: row;
-  overflow: auto;
+  overflow: hidden;
 }
 
-.units-row {
+.row {
+  display: flex;
   cursor: pointer;
   user-select: none;
   height: var(--list-row-height);
   padding-left: 0.5em;
 
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-weight: var(--vscode-editor-font-weight, normal);
-  font-size: var(--font-size);
+  font-family: var(--code-font-family, monospace);
+  font-weight: var(--code-font-weight, normal);
+  font-size: var(--code-font-size);
   text-wrap: nowrap;
   white-space: pre;
 
   &:hover {
-    background-color: var(--vscode-list-hoverBackground);
+    background-color: var(--list-row-hover-background);
+  }
+}
+
+.indent {
+  display: inline-block;
+  height: var(--list-row-height);
+  width: 0;
+  border-right: 1px solid var(--panel-separator);
+  margin-left: 0.5em;
+  margin-right: 0.5em;
+}
+
+.toggle {
+  display: inline-block;
+  height: var(--list-row-height);
+  width: 1em;
+  margin-right: 0.25em;
+}
+
+.unit {
+  .label {
+    margin-left: 0.4em;
   }
 }
 
 .complete {
-  color: lightgreen;
+  color: var(--color-green);
 }
 
 .incomplete {
-  color: lightcoral;
+  color: var(--color-red);
+}
+
+.collapsed {
+  opacity: 0.75;
 }

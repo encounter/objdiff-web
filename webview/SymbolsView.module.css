@@ -16,33 +16,61 @@
   user-select: none;
   height: var(--list-row-height);
 
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-weight: var(--vscode-editor-font-weight, normal);
-  font-size: var(--font-size);
+  font-family: var(--code-font-family);
+  font-weight: var(--code-font-weight);
+  font-size: var(--code-font-size);
   text-wrap: nowrap;
   white-space: pre;
 
   &:hover {
-    background-color: var(--vscode-list-hoverBackground);
+    background-color: var(--list-row-hover-background);
   }
 }
 
 .section {
   padding-left: 0.5em;
+
+  &::before {
+    content: "▼ ";
+  }
+  &.collapsed {
+    opacity: 0.75;
+    &::before {
+      content: "▶ ";
+    }
+  }
 }
 
 .symbol {
   padding-left: 2em;
 }
 
+.flag-local {
+  color: inherit;
+}
+
 .flag-global {
-  color: lightgreen;
+  color: var(--color-green);
 }
 
 .flag-weak {
-  /* todo */
+  color: inherit;
+}
+
+.flag-common {
+  color: var(--color-blue);
 }
 
 .symbol-name {
   color: light-dark(black, white);
+}
+
+.no-object {
+  color: var(--color-blue);
+
+  font-family: var(--code-font-family);
+  font-weight: var(--code-font-weight);
+  font-size: var(--code-font-size);
+  text-wrap: nowrap;
+  white-space: pre;
 }

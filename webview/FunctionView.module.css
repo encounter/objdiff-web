@@ -11,9 +11,9 @@
 
 .instruction-cell {
   flex: 1 0 0;
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-weight: var(--vscode-editor-font-weight, normal);
-  font-size: var(--font-size);
+  font-family: var(--code-font-family);
+  font-weight: var(--code-font-weight);
+  font-size: var(--code-font-size);
   text-wrap: nowrap;
   white-space: pre;
   overflow: hidden;
@@ -23,20 +23,24 @@
 .highlightable {
   cursor: pointer;
 }
+.highlighted {
+  color: white;
+  background-color: #aa8b00;
+}
 .line-number {
-  color: var(--vscode-editorLineNumber-foreground);
+  color: var(--line-number-foreground);
 }
 .diff_any {
   background-color: rgba(255, 255, 255, 0.02);
 }
 .diff_change {
-  color: #6d6dff;
+  color: var(--color-blue);
 }
 .diff_add {
-  color: #45bd00;
+  color: var(--color-green);
 }
 .diff_remove {
-  color: #c82829;
+  color: var(--color-red);
 }
 .symbol {
   color: light-dark(black, white);

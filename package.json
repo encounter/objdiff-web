@@ -1,17 +1,21 @@
 {
-  "name": "objdiff-code",
-  "displayName": "objdiff-code",
+  "name": "objdiff",
+  "displayName": "objdiff",
   "description": "objdiff",
+  "publisher": "decomp-dev",
   "version": "0.0.1",
   "scripts": {
     "build": "rsbuild build",
-    "watch": "rsbuild build --watch --mode development",
+    "watch": "rsbuild build -w --env-mode watch",
+    "dev": "rsbuild dev --env-mode dev",
     "check": "biome check --write",
     "format": "biome format --write"
   },
   "dependencies": {
     "@protobuf-ts/runtime": "^2.9.4",
+    "@vscode/codicons": "^0.0.36",
     "clsx": "^2.1.1",
+    "core-js": "^3.39.0",
     "memoize-one": "^6.0.0",
     "picomatch": "^4.0.2",
     "react": "^18.3.1",
@@ -25,6 +29,9 @@
     "@rsbuild/core": "^1.1.8",
     "@rsbuild/plugin-react": "^1.0.7",
     "@rsbuild/plugin-type-check": "^1.1.0",
+    "@rsbuild/plugin-typed-css-modules": "^1.0.2",
+    "@types/core-js": "^2.5.8",
+    "@types/node": "^22.10.2",
     "@types/picomatch": "^3.0.1",
     "@types/react": "^18.3.1",
     "@types/react-dom": "^18.3.1",
@@ -33,15 +40,22 @@
     "@types/vscode-webview": "^1.57.5",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
   "main": "./dist/extension.js",
   "engines": {
     "vscode": "^1.96.0"
   },
-  "browserslist": ["chrome 128"],
-  "categories": ["Other"],
-  "activationEvents": ["*"],
+  "browserslist": [
+    "chrome 128"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "*"
+  ],
   "contributes": {
     "commands": [
       {
@@ -61,6 +75,10 @@
         "title": "objdiff: Switch To Current File"
       },
       {
+        "command": "objdiff.settings",
+        "title": "objdiff: Settings"
+      },
+      {
         "command": "objdiff.copySymbolName",
         "title": "Copy name",
         "enablement": "webviewId == 'objdiff' && contextType == 'symbol'"
@@ -71,16 +89,195 @@
         "enablement": "webviewId == 'objdiff' && contextType == 'symbol' && symbolDemangledName"
       }
     ],
-    "configuration": {
-      "title": "objdiff",
-      "properties": {
-        "objdiff.binaryPath": {
-          "type": "string",
-          "description": "Path to the objdiff-cli binary",
-          "ignoreSync": true
+    "configuration": [
+      {
+        "title": "Extension",
+        "properties": {
+          "objdiff.binaryPath": {
+            "type": "string",
+            "description": "Path to the objdiff-cli binary",
+            "scope": "machine"
+          }
+        }
+      },
+      {
+        "title": "General",
+        "properties": {
+          "objdiff.relaxRelocDiffs": {
+            "type": "boolean",
+            "description": "Ignores differences in relocation targets. (Address, name, etc)",
+            "default": false
+          },
+          "objdiff.spaceBetweenArgs": {
+            "type": "boolean",
+            "description": "Adds a space between arguments in the diff output.",
+            "default": true
+          },
+          "objdiff.combineDataSections": {
+            "type": "boolean",
+            "description": "Combines data sections with equal names.",
+            "default": false
+          }
+        }
+      },
+      {
+        "title": "ARM",
+        "properties": {
+          "objdiff.arm.archVersion": {
+            "type": "string",
+            "description": "ARM architecture version to use for disassembly.",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "v4t",
+              "v5te",
+              "v6k"
+            ],
+            "enumItemLabels": [
+              "Auto",
+              "ARMv4T (GBA)",
+              "ARMv5TE (DS)",
+              "ARMv6K (3DS)"
+            ],
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "objdiff.arm.unifiedSyntax": {
+            "type": "boolean",
+            "description": "Disassemble as unified assembly language (UAL).",
+            "default": false
+          },
+          "objdiff.arm.avRegisters": {
+            "type": "boolean",
+            "description": "Display R0-R3 as A1-A4 and R4-R11 as V1-V8.",
+            "default": false
+          },
+          "objdiff.arm.r9Usage": {
+            "type": "string",
+            "default": "generalPurpose",
+            "enum": [
+              "generalPurpose",
+              "sb",
+              "tr"
+            ],
+            "enumItemLabels": [
+              "R9 or V6",
+              "SB (static base)",
+              "TR (TLS register)"
+            ],
+            "enumDescriptions": [
+              "Use R9 as a general-purpose register.",
+              "Used for position-independent data (PID).",
+              "Used for thread-local storage."
+            ]
+          },
+          "objdiff.arm.slUsage": {
+            "type": "boolean",
+            "description": "Used for explicit stack limits.",
+            "default": false
+          },
+          "objdiff.arm.fpUsage": {
+            "type": "boolean",
+            "description": "Used for frame pointers.",
+            "default": false
+          },
+          "objdiff.arm.ipUsage": {
+            "type": "boolean",
+            "description": "Used for interworking and long branches.",
+            "default": false
+          }
+        }
+      },
+      {
+        "title": "MIPS",
+        "properties": {
+          "objdiff.mips.abi": {
+            "type": "string",
+            "description": "MIPS ABI to use for disassembly.",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "o32",
+              "n32",
+              "n64"
+            ],
+            "enumItemLabels": [
+              "Auto",
+              "O32",
+              "N32",
+              "N64"
+            ],
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null
+            ]
+          },
+          "objdiff.mips.instrCategory": {
+            "type": "string",
+            "description": "MIPS instruction category to use for disassembly.",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "cpu",
+              "rsp",
+              "r3000gte",
+              "r4000allegrex",
+              "r5900"
+            ],
+            "enumItemLabels": [
+              "Auto",
+              "CPU",
+              "RSP (N64)",
+              "R3000 GTE (PS1)",
+              "R4000 ALLEGREX (PSP)",
+              "R5900 EE (PS2)"
+            ],
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
+          }
+        }
+      },
+      {
+        "title": "x86",
+        "properties": {
+          "objdiff.x86.formatter": {
+            "type": "string",
+            "description": "x86 disassembly syntax.",
+            "default": "intel",
+            "enum": [
+              "intel",
+              "gas",
+              "nasm",
+              "masm"
+            ],
+            "enumItemLabels": [
+              "Intel",
+              "AT&T",
+              "NASM",
+              "MASM"
+            ],
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null
+            ]
+          }
         }
       }
-    },
+    ],
     "menus": {
       "webview/context": [
         {

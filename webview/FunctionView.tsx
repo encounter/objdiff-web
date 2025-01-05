@@ -7,6 +7,7 @@ import { memo, useMemo } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, areEqual } from 'react-window';
 import type { ListChildComponentProps } from 'react-window';
+import { useShallow } from 'zustand/react/shallow';
 import { DiffKind } from '../shared/gen/diff_pb';
 import type {
   Symbol as DiffSymbol,
@@ -14,26 +15,51 @@ import type {
   SymbolDiff,
 } from '../shared/gen/diff_pb';
 import { displayDiff } from './diff';
-import { useAppStore, useExtensionStore, vscode } from './state';
+import {
+  type HighlightState,
+  highlightColumn,
+  highlightMatches,
+  updateHighlight,
+} from './highlight';
+import { runBuild, useAppStore, useExtensionStore } from './state';
 import { percentClass, useFontSize } from './util';
+
+const ROTATION_CLASSES = [
+  styles.rotation0,
+  styles.rotation1,
+  styles.rotation2,
+  styles.rotation3,
+  styles.rotation4,
+  styles.rotation5,
+  styles.rotation6,
+  styles.rotation7,
+  styles.rotation8,
+];
 
 const AsmCell = ({
   insDiff,
   symbol,
+  column,
+  highlight: highlightState,
+  setHighlight,
 }: {
   insDiff: InstructionDiff | undefined;
   symbol: DiffSymbol | undefined;
+  column: number;
+  highlight: HighlightState;
+  setHighlight: (highlight: HighlightState) => void;
 }) => {
   if (!insDiff || !symbol) {
     return <div className={styles.instructionCell} />;
   }
 
+  const highlight = highlightColumn(highlightState, column);
   const out: React.ReactNode[] = [];
   let index = 0;
   displayDiff(insDiff, symbol.address, (t) => {
     let className: string | undefined;
     if (t.diff_index != null) {
-      className = styles[`rotation${t.diff_index % 9}`];
+      className = ROTATION_CLASSES[t.diff_index % ROTATION_CLASSES.length];
     }
     let text = '';
     let postText = ''; // unhighlightable text after the token
@@ -45,7 +71,7 @@ const AsmCell = ({
         break;
       case 'basic_color':
         text = t.text;
-        className = styles[`rotation${t.index % 9}`];
+        className = ROTATION_CLASSES[t.index % ROTATION_CLASSES.length];
         break;
       case 'line':
         text = (t.line_number || 0).toString(10);
@@ -111,11 +137,11 @@ const AsmCell = ({
         key={index}
         className={clsx(className, {
           [styles.highlightable]: isToken,
-          // [styles.highlighted]: highlighter?.value === text,
+          [styles.highlighted]: highlightMatches(highlight, t),
         })}
         onClick={(e) => {
           if (isToken) {
-            // highlighter?.select(text);
+            setHighlight(updateHighlight(highlightState, t, column));
             e.stopPropagation();
           }
         }}
@@ -158,20 +184,47 @@ type ItemData = {
   itemCount: number;
   left: SymbolDiff | null;
   right: SymbolDiff | null;
+  highlight: HighlightState;
+  setHighlight: (highlight: HighlightState) => void;
 };
 
 const AsmRow = memo(
   ({
     index,
     style,
-    data: { left, right },
+    data: { left, right, highlight, setHighlight },
   }: ListChildComponentProps<ItemData>) => {
     const leftIns = left?.instructions[index];
     const rightIns = right?.instructions[index];
     return (
-      <div className={styles.instructionRow} style={style}>
-        <AsmCell insDiff={leftIns} symbol={left?.symbol} />
-        <AsmCell insDiff={rightIns} symbol={right?.symbol} />
+      <div
+        className={styles.instructionRow}
+        style={style}
+        onClick={() => {
+          // Clear highlight on background click
+          setHighlight({ left: null, right: null });
+        }}
+        onMouseDown={(e) => {
+          // Prevent double click text selection
+          if (e.detail > 1) {
+            e.preventDefault();
+          }
+        }}
+      >
+        <AsmCell
+          insDiff={leftIns}
+          symbol={left?.symbol}
+          column={0}
+          highlight={highlight}
+          setHighlight={setHighlight}
+        />
+        <AsmCell
+          insDiff={rightIns}
+          symbol={right?.symbol}
+          column={1}
+          highlight={highlight}
+          setHighlight={setHighlight}
+        />
       </div>
     );
   },
@@ -179,52 +232,122 @@ const AsmRow = memo(
 );
 
 const createItemData = memoizeOne(
-  (left: SymbolDiff | null, right: SymbolDiff | null): ItemData => {
+  (
+    left: SymbolDiff | null,
+    right: SymbolDiff | null,
+    highlight: HighlightState,
+    setHighlight: (highlight: HighlightState) => void,
+  ): ItemData => {
     const itemCount = Math.max(
       left?.instructions.length || 0,
       right?.instructions.length || 0,
     );
-    return { itemCount, left, right };
+    return { itemCount, left, right, highlight, setHighlight };
   },
 );
+
+const SymbolLabel = ({
+  symbol,
+}: {
+  symbol: SymbolDiff | null;
+}) => {
+  if (!symbol) {
+    return (
+      <span className={clsx(headerStyles.label, headerStyles.missing)}>
+        Missing
+      </span>
+    );
+  }
+  const demangledName = symbol.symbol?.demangled_name || symbol.symbol?.name;
+  return (
+    <span
+      className={clsx(headerStyles.label, headerStyles.emphasized)}
+      title={demangledName}
+    >
+      {demangledName}
+    </span>
+  );
+};
 
 const FunctionView = ({
   left,
   right,
 }: { left: SymbolDiff | null; right: SymbolDiff | null }) => {
-  const buildRunning = useExtensionStore((state) => state.buildRunning);
-  const setSelectedSymbol = useAppStore((state) => state.setSelectedSymbol);
-  const setSymbolScrollOffset = useAppStore(
-    (state) => state.setSymbolScrollOffset,
+  const { buildRunning, currentUnit, lastBuilt } = useExtensionStore(
+    useShallow((state) => ({
+      buildRunning: state.buildRunning,
+      currentUnit: state.currentUnit,
+      lastBuilt: state.lastBuilt,
+    })),
   );
+  const currentUnitName = currentUnit?.name || '';
+  const { highlight, setSelectedSymbol, setSymbolScrollOffset, setHighlight } =
+    useAppStore(
+      useShallow((state) => ({
+        highlight: state.highlight,
+        setSelectedSymbol: state.setSelectedSymbol,
+        setSymbolScrollOffset: state.setSymbolScrollOffset,
+        setHighlight: state.setHighlight,
+      })),
+    );
 
   const symbolName = left?.symbol?.name || right?.symbol?.name || '';
   const initialScrollOffset = useMemo(
-    () => useAppStore.getState().symbolScrollOffsets[symbolName] || 0,
-    [symbolName],
+    () =>
+      useAppStore.getState().getUnitState(currentUnitName).symbolScrollOffsets[
+        symbolName
+      ] || 0,
+    [currentUnitName, symbolName],
   );
 
   const itemSize = useFontSize() * 1.33;
-  const itemData = createItemData(left, right);
-  const demangledName =
-    left?.symbol?.demangled_name || right?.symbol?.demangled_name || symbolName;
-  const matchPercent = right?.match_percent || 0;
+  const itemData = createItemData(left, right, highlight, setHighlight);
+  const matchPercent = right?.match_percent;
   return (
     <>
       <div className={headerStyles.header}>
-        <button onClick={() => setSelectedSymbol(null)}>Back</button>
-        <button
-          onClick={() =>
-            vscode.postMessage({ type: 'runTask', taskType: 'build' })
-          }
-          disabled={buildRunning}
-        >
-          Build
-        </button>
-        <span className={percentClass(matchPercent)}>
-          {Math.floor(matchPercent).toFixed(0)}%
-        </span>
-        <span title={demangledName}>{demangledName}</span>
+        <div className={headerStyles.column}>
+          <div className={headerStyles.row}>
+            <button title="Back" onClick={() => setSelectedSymbol(null)}>
+              <span className="codicon codicon-chevron-left" />
+            </button>
+          </div>
+          <div className={headerStyles.row}>
+            <SymbolLabel symbol={left} />
+          </div>
+        </div>
+        <div className={headerStyles.column}>
+          <div className={headerStyles.row}>
+            <button
+              title="Build"
+              onClick={() => runBuild()}
+              disabled={buildRunning}
+            >
+              <span className="codicon codicon-refresh" />
+            </button>
+            {lastBuilt && (
+              <span className={headerStyles.label}>
+                Last built: {new Date(lastBuilt).toLocaleTimeString('en-US')}
+              </span>
+            )}
+          </div>
+          <div className={headerStyles.row}>
+            {matchPercent !== undefined && (
+              <>
+                <span
+                  className={clsx(
+                    headerStyles.label,
+                    percentClass(matchPercent),
+                  )}
+                >
+                  {Math.floor(matchPercent).toFixed(0)}%
+                </span>
+                {' | '}
+              </>
+            )}
+            <SymbolLabel symbol={right} />
+          </div>
+        </div>
       </div>
       <div className={styles.instructionList}>
         <AutoSizer>
@@ -237,7 +360,11 @@ const FunctionView = ({
               itemData={itemData}
               overscanCount={20}
               onScroll={(e) => {
-                setSymbolScrollOffset(symbolName, e.scrollOffset);
+                setSymbolScrollOffset(
+                  currentUnitName,
+                  symbolName,
+                  e.scrollOffset,
+                );
               }}
               initialScrollOffset={initialScrollOffset}
             >

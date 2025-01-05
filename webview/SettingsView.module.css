@@ -1,0 +1,18 @@
+.container {
+  padding: 0 1em;
+}
+
+.header {
+  margin: 0.5em 0;
+}
+
+.category-header {
+  margin: 0.5em;
+}
+
+.property {
+  margin: 0.5em 1em;
+  display: flex;
+  flex-flow: row;
+  align-items: center;
+}

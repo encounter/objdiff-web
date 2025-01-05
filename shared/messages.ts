@@ -1,24 +1,21 @@
-import type { ObjdiffConfiguration, Unit } from './config';
-
-export type DiffMessage = {
-  type: 'diff';
-  data: ArrayBuffer | null;
-  currentUnit: Unit | null;
-};
-
-export type TaskMessage = {
-  type: 'task';
-  taskType: string;
-  running: boolean;
-};
+import type {
+  ConfigProperties,
+  ConfigPropertyValue,
+  ProjectConfig,
+  Unit,
+} from './config';
 
 export type StateMessage = {
   type: 'state';
-  config: ObjdiffConfiguration | null;
+  buildRunning?: boolean;
+  configProperties?: ConfigProperties;
+  currentUnit?: Unit | null;
+  data?: ArrayBuffer | null;
+  projectConfig?: ProjectConfig | null;
 };
 
 // extension -> webview
-export type InboundMessage = DiffMessage | TaskMessage | StateMessage;
+export type InboundMessage = StateMessage;
 
 export type ReadyMessage = {
   type: 'ready';
@@ -43,10 +40,22 @@ export type QuickPickUnitMessage = {
   type: 'quickPickUnit';
 };
 
+export type SetConfigPropertyMessage = {
+  type: 'setConfigProperty';
+  id: string;
+  value: ConfigPropertyValue | undefined;
+};
+
+export type OpenSettingsMessage = {
+  type: 'openSettings';
+};
+
 // webview -> extension
 export type OutboundMessage =
-  | ReadyMessage
   | LineRangesMessage
+  | OpenSettingsMessage
+  | QuickPickUnitMessage
+  | ReadyMessage
   | RunTaskMessage
-  | SetCurrentUnitMessage
-  | QuickPickUnitMessage;
+  | SetConfigPropertyMessage
+  | SetCurrentUnitMessage;

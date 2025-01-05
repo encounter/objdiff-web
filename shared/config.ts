@@ -1,5 +1,3 @@
-// import * as vscode from 'vscode';
-
 export const DEFAULT_WATCH_PATTERNS = [
   '*.c',
   '*.cp',
@@ -19,10 +17,12 @@ export const DEFAULT_WATCH_PATTERNS = [
   '*.json',
 ];
 
+export const CONFIG_FILENAME = 'objdiff.json';
+
 /**
  * Configuration file for objdiff
  */
-export interface ObjdiffConfiguration {
+export interface ProjectConfig {
   /**
    * Minimum version of objdiff required to load this configuration file.
    */
@@ -179,7 +179,7 @@ export interface ProgressCategory {
   name?: string;
 }
 
-export function resolveConfig(config: ObjdiffConfiguration) {
+export function resolveProjectConfig(config: ProjectConfig) {
   if (config.watch_patterns === undefined) {
     config.watch_patterns = DEFAULT_WATCH_PATTERNS;
   }
@@ -214,4 +214,71 @@ export function resolveConfig(config: ObjdiffConfiguration) {
     }
   }
   return config;
+}
+
+export type ConfigPropertyBase = {
+  id: string;
+  name: string;
+  description?: string;
+  default: ConfigPropertyValue;
+};
+
+export type ConfigPropertyValue = boolean | string;
+
+export type ConfigProperties = Record<string, ConfigPropertyValue>;
+
+export type ConfigPropertyBoolean = ConfigPropertyBase & {
+  type: 'boolean';
+  default: boolean;
+};
+
+export type ConfigPropertyChoice = ConfigPropertyBase & {
+  type: 'choice';
+  default: string;
+  items: ConfigPropertyChoiceItem[];
+};
+
+export type ConfigProperty = ConfigPropertyBoolean | ConfigPropertyChoice;
+
+export type ConfigPropertyChoiceItem = {
+  value: string;
+  name: string;
+  description?: string;
+};
+
+export type ConfigGroup = {
+  id: string;
+  name: string;
+  properties: string[];
+};
+
+export type ConfigSchema = {
+  properties: ConfigProperty[];
+  groups: ConfigGroup[];
+};
+
+import configSchema from './config-schema.json';
+export const CONFIG_SCHEMA = configSchema as ConfigSchema;
+
+export function getPropertyValue(
+  properties: ConfigProperties,
+  id: string,
+): ConfigPropertyValue {
+  const property = CONFIG_SCHEMA.properties.find((p) => p.id === id);
+  if (!property) {
+    throw new Error(`Property not found: ${id}`);
+  }
+  return properties[id] ?? property.default;
+}
+
+export function getModifiedConfigProperties(
+  properties: ConfigProperties,
+): ConfigProperties {
+  const modified: ConfigProperties = {};
+  for (const property of CONFIG_SCHEMA.properties) {
+    if (property.default !== properties[property.id]) {
+      modified[property.id] = properties[property.id];
+    }
+  }
+  return modified;
 }

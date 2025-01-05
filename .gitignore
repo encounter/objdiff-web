@@ -10,3 +10,6 @@ dist/
 # IDE
 .vscode-test/
 *.vsix
+
+# Ignore auto generated CSS declarations
+*.module.css.d.ts

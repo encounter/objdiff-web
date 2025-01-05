@@ -1,13 +1,26 @@
-import { defineConfig } from '@rsbuild/core';
+import fs from 'node:fs';
+import type { ServerResponse } from 'node:http';
+import { type RequestHandler, defineConfig } from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
 import { pluginTypeCheck } from '@rsbuild/plugin-type-check';
+import { pluginTypedCSSModules } from '@rsbuild/plugin-typed-css-modules';
+
+const devServer = process.env.DEV_SERVER === 'true';
 
 export default defineConfig({
   // Disable HMR and live reload. Neither the extension nor the
   // webview can communicate with the rsbuild dev server.
   dev: {
-    hmr: false,
-    liveReload: false,
+    hmr: devServer,
+    liveReload: devServer,
+    setupMiddlewares: [
+      (middlewares, _server) => {
+        if (devServer) {
+          middlewares.unshift(apiMiddleware);
+        }
+        return middlewares;
+      },
+    ],
   },
   environments: {
     extension: {
@@ -38,8 +51,9 @@ export default defineConfig({
         // VS Code webviews don't have easy access to resources,
         // (especially if the extension is running on web) so we
         // simply inline everything into the HTML.
-        inlineScripts: true,
-        inlineStyles: true,
+        dataUriLimit: devServer ? undefined : 1000000000,
+        inlineScripts: !devServer,
+        inlineStyles: !devServer,
         legalComments: 'none',
       },
       // <script defer> doesn't work with inline scripts,
@@ -51,8 +65,9 @@ export default defineConfig({
       },
       plugins: [
         pluginReact({
-          fastRefresh: false,
+          fastRefresh: devServer,
         }),
+        pluginTypedCSSModules(),
       ],
     },
   },
@@ -60,7 +75,7 @@ export default defineConfig({
   // the webview must be self-contained files.
   performance: {
     chunkSplit: {
-      strategy: 'all-in-one',
+      strategy: devServer ? undefined : 'all-in-one',
     },
   },
   // Enable async TypeScript type checking.
@@ -71,8 +86,48 @@ export default defineConfig({
   tools: {
     rspack: {
       output: {
-        asyncChunks: false,
+        asyncChunks: devServer,
       },
     },
   },
 });
+
+// Mock API middleware for development.
+const apiMiddleware: RequestHandler = (req, res, next) => {
+  if (req.method === 'GET' && req.url === '/api/project') {
+    return sendFile(res, '../prime/objdiff.json', 'application/json');
+  }
+  if (req.method === 'GET' && req.url === '/api/diff') {
+    return sendFile(res, '../prime/diff.binpb', 'application/octet-stream');
+  }
+  next();
+};
+
+// Send a file as a response.
+function sendFile(
+  res: ServerResponse,
+  path: string,
+  contentType: string,
+): void {
+  const stream = fs.createReadStream(path);
+  stream.on('error', (err) => {
+    if (res.headersSent) {
+      throw err;
+    }
+    let statusCode = 500;
+    // biome-ignore lint/suspicious/noExplicitAny: Node error
+    if ((err as any).code === 'ENOENT') {
+      statusCode = 404;
+    }
+    res.writeHead(statusCode, {
+      'Content-Type': 'application/json',
+    });
+    res.end(JSON.stringify({ error: err.message }));
+  });
+  stream.on('ready', () => {
+    res.writeHead(200, {
+      'Content-Type': contentType,
+    });
+  });
+  stream.pipe(res);
+}

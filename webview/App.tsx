@@ -1,5 +1,6 @@
 import './App.css';
 
+import { useShallow } from 'zustand/react/shallow';
 import { SectionKind } from '../shared/gen/diff_pb';
 import type {
   Symbol as DiffSymbol,
@@ -7,6 +8,7 @@ import type {
   SymbolDiff,
 } from '../shared/gen/diff_pb';
 import FunctionView from './FunctionView';
+import SettingsView from './SettingsView';
 import SymbolsView from './SymbolsView';
 import UnitsView from './UnitsView';
 import { useAppStore, useExtensionStore } from './state';
@@ -35,9 +37,25 @@ const findSymbol = (
 };
 
 const App = () => {
-  const { diff } = useExtensionStore();
-  const selectedSymbolRef = useAppStore((state) => state.selectedSymbol);
-  const config = useExtensionStore((state) => state.config);
+  const { buildRunning, diff, config, ready } = useExtensionStore(
+    useShallow((state) => ({
+      buildRunning: state.buildRunning,
+      diff: state.diff,
+      config: state.projectConfig,
+      ready: state.ready,
+    })),
+  );
+  const { selectedSymbolRef, currentView } = useAppStore(
+    useShallow((state) => ({
+      selectedSymbolRef: state.selectedSymbol,
+      currentView: state.currentView,
+    })),
+  );
+
+  if (!ready) {
+    // Uses panel background color to avoid flashing
+    return <div className="loading-root" />;
+  }
 
   if (diff) {
     const leftSymbol = findSymbol(diff.left, selectedSymbolRef);
@@ -48,14 +66,28 @@ const App = () => {
     return <SymbolsView diff={diff} />;
   }
 
-  return config ? (
-    <UnitsView />
-  ) : (
-    <div className="content">
-      <h1>objdiff</h1>
-      <p>No configuration loaded.</p>
-    </div>
-  );
+  switch (currentView) {
+    case 'main':
+      if (buildRunning) {
+        return (
+          <div className="content">
+            <p>Building...</p>
+          </div>
+        );
+      }
+      return config ? (
+        <UnitsView />
+      ) : (
+        <div className="content">
+          <h1>objdiff</h1>
+          <p>No configuration loaded.</p>
+        </div>
+      );
+    case 'settings':
+      return <SettingsView />;
+    default:
+      return null;
+  }
 };
 
 export default App;

@@ -12,7 +12,7 @@ export const getCssVariablePx = (name: string) => {
   return Number.parseInt(value.slice(0, -2), 10);
 };
 
-export const CSS_VAR_FONT_SIZE = '--font-size';
+export const CSS_VAR_FONT_SIZE = '--code-font-size';
 
 export const useFontSize = () => {
   const [fontSize, setFontSize] = useState<number>(() =>
