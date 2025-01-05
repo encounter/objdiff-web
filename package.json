@@ -3,7 +3,12 @@
   "displayName": "objdiff",
   "description": "objdiff",
   "publisher": "decomp-dev",
-  "version": "0.0.1",
+  "version": "0.0.2",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/encounter/objdiff-code"
+  },
+  "license": "MIT",
   "scripts": {
     "build": "rsbuild build",
     "watch": "rsbuild build -w --env-mode watch",
@@ -54,7 +59,7 @@
     "Other"
   ],
   "activationEvents": [
-    "*"
+    "onWebviewPanel:objdiff"
   ],
   "contributes": {
     "commands": [

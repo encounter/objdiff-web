@@ -1,5 +1,4 @@
-import projectConfig from '../../prime/objdiff.json';
-import { resolveProjectConfig } from '../shared/config';
+import { type ProjectConfig, resolveProjectConfig } from '../shared/config';
 import type { InboundMessage, OutboundMessage } from '../shared/messages';
 import type { AppStateSerialized, MyWebviewApi } from './state';
 
@@ -23,12 +22,14 @@ async function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-const resolvedProjectConfig = resolveProjectConfig(projectConfig);
+let resolvedProjectConfig: ProjectConfig | null = null;
 
 async function handleMessage(msg: OutboundMessage): Promise<void> {
   switch (msg.type) {
     case 'ready': {
-      await delay(0);
+      const response = await fetch('/api/project');
+      const projectConfig = await response.json();
+      resolvedProjectConfig = resolveProjectConfig(projectConfig);
       sendMessage({
         type: 'state',
         buildRunning: false,

@@ -4,6 +4,7 @@ out/**
 node_modules/**
 src/**
 webview/**
+shared/**
 .gitignore
 .yarnrc
 rsbuild.config.ts
@@ -12,3 +13,4 @@ rsbuild.config.ts
 **/*.map
 **/*.ts
 **/.vscode-test.*
+.env*
