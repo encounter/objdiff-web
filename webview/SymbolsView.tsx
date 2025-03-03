@@ -2,8 +2,8 @@ import headerStyles from './Header.module.css';
 import styles from './SymbolsView.module.css';
 
 import clsx from 'clsx';
-import 'core-js/features/regexp/escape';
 import memoizeOne from 'memoize-one';
+import { type diff, display } from 'objdiff-wasm';
 import { memo, useMemo } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import {
@@ -12,16 +12,9 @@ import {
   areEqual,
 } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
+import TooltipShared from './TooltipShared';
 import {
-  type DiffResult,
-  type Symbol as DiffSymbol,
-  type ObjectDiff,
-  type SectionDiff,
-  type SymbolDiff,
-  SymbolFlag,
-} from '../shared/gen/diff_pb';
-import {
-  UnitScrollOffsets,
+  type UnitScrollOffsets,
   runBuild,
   setCurrentUnit,
   useAppStore,
@@ -39,12 +32,12 @@ const SectionRow = ({
   onClick?: React.MouseEventHandler<HTMLDivElement>;
 }) => {
   let percentElem = null;
-  if (section.match_percent != null) {
+  if (section.matchPercent != null) {
     percentElem = (
       <>
         {' ('}
-        <span className={percentClass(section.match_percent)}>
-          {Math.floor(section.match_percent).toFixed(0)}%
+        <span className={percentClass(section.matchPercent)}>
+          {Math.floor(section.matchPercent).toFixed(0)}%
         </span>
         {')'}
       </>
@@ -64,35 +57,43 @@ const SectionRow = ({
 };
 
 const SymbolRow = ({
+  obj,
   section,
-  diff,
+  symbolRef,
+  side,
   style,
-}: { section: SectionDiff; diff: SymbolDiff; style?: React.CSSProperties }) => {
+}: {
+  obj: diff.ObjectDiff;
+  section: SectionData;
+  symbolRef: display.SectionDisplaySymbol;
+  side: keyof UnitScrollOffsets;
+  style?: React.CSSProperties;
+}) => {
   const setSelectedSymbol = useAppStore((state) => state.setSelectedSymbol);
-  const symbol = diff.symbol as DiffSymbol;
+  const symbol = display.displaySymbol(obj, symbolRef);
   const flags = [];
-  if (symbol.flags & SymbolFlag.SYMBOL_GLOBAL) {
+  if (symbol.flags.global) {
     flags.push(
       <span key="g" className={styles.flagGlobal}>
         g
       </span>,
     );
   }
-  if (symbol.flags & SymbolFlag.SYMBOL_WEAK) {
+  if (symbol.flags.weak) {
     flags.push(
       <span key="w" className={styles.flagWeak}>
         w
       </span>,
     );
   }
-  if (symbol.flags & SymbolFlag.SYMBOL_LOCAL) {
+  if (symbol.flags.local) {
     flags.push(
       <span key="l" className={styles.flagLocal}>
         l
       </span>,
     );
   }
-  if (symbol.flags & SymbolFlag.SYMBOL_COMMON) {
+  if (symbol.flags.common) {
     flags.push(
       <span key="c" className={styles.flagCommon}>
         c
@@ -104,73 +105,79 @@ const SymbolRow = ({
     flagsElem = <>[{flags}] </>;
   }
   let percentElem = null;
-  if (diff.match_percent != null) {
+  if (symbol.matchPercent != null) {
     percentElem = (
       <>
         {'('}
-        <span className={percentClass(diff.match_percent)}>
-          {Math.floor(diff.match_percent).toFixed(0)}%
+        <span className={percentClass(symbol.matchPercent)}>
+          {Math.floor(symbol.matchPercent).toFixed(0)}%
         </span>
         {') '}
       </>
     );
   }
+  const tooltipContent: SymbolTooltipContent = {
+    symbolRef,
+    side,
+  };
   return (
     <div
       className={clsx(styles.symbolListRow, styles.symbol)}
       style={style}
       onClick={() => {
-        setSelectedSymbol({
-          symbol_name: symbol.name,
-          section_name: section.name,
-        });
+        setSelectedSymbol(
+          {
+            symbolName: symbol.name,
+            sectionName: section.name,
+          },
+          {
+            symbolName: symbol.name,
+            sectionName: section.name,
+          },
+        );
       }}
       data-vscode-context={JSON.stringify({
         contextType: 'symbol',
         preventDefaultContextMenuItems: true,
         symbolName: symbol.name,
-        symbolDemangledName: symbol.demangled_name,
+        symbolDemangledName: symbol.demangledName,
       })}
+      data-tooltip-id="symbol-tooltip"
+      data-tooltip-content={JSON.stringify(tooltipContent)}
     >
       {flagsElem}
       {percentElem}
       <span className={styles.symbolName}>
-        {symbol.demangled_name || symbol.name}
+        {symbol.demangledName || symbol.name}
       </span>
     </div>
   );
 };
 
-type SectionData = SectionDiff & { id: string; collapsed: boolean };
-
-type ItemData = {
-  exists: boolean;
-  itemCount: number;
-  sections: SectionData[];
-  setSectionCollapsed: (section: string, collapsed: boolean) => void;
+type SymbolTooltipContent = {
+  symbolRef: display.SectionDisplaySymbol;
+  side: keyof UnitScrollOffsets;
 };
 
-const searchMatches = (
-  searchRegex: RegExp | null,
-  symbolDiff: SymbolDiff,
-): boolean => {
-  if (!searchRegex) {
-    return true;
-  }
-  const symbol = symbolDiff.symbol as DiffSymbol;
-  return (
-    searchRegex.test(symbol.name) ||
-    (symbol.demangled_name && searchRegex.test(symbol.demangled_name)) ||
-    false
-  );
+type SectionData = display.SectionDisplay & { collapsed: boolean };
+
+type ItemData = {
+  obj: diff.ObjectDiff | undefined;
+  itemCount: number;
+  sections: SectionData[];
+  side: keyof UnitScrollOffsets;
+  setSectionCollapsed: (section: string, collapsed: boolean) => void;
 };
 
 const SymbolListRow = memo(
   ({
     index,
     style,
-    data: { sections, setSectionCollapsed },
+    data: { obj, sections, side, setSectionCollapsed },
   }: ListChildComponentProps<ItemData>) => {
+    if (!obj) {
+      return null;
+    }
     let currentIndex = 0;
     for (const section of sections) {
       if (currentIndex === index) {
@@ -187,8 +194,16 @@ const SymbolListRow = memo(
         continue;
       }
       if (index < currentIndex + section.symbols.length) {
-        const symbolDiff = section.symbols[index - currentIndex];
-        return <SymbolRow section={section} diff={symbolDiff} style={style} />;
+        const symbolRef = section.symbols[index - currentIndex];
+        return (
+          <SymbolRow
+            obj={obj}
+            section={section}
+            symbolRef={symbolRef}
+            side={side}
+            style={style}
+          />
+        );
       }
       currentIndex += section.symbols.length;
     }
@@ -198,70 +213,66 @@ const SymbolListRow = memo(
 );
 
 const createItemDataFn = (
-  obj: ObjectDiff | undefined,
+  obj: diff.ObjectDiff | undefined,
   collapsedSections: Record<string, boolean>,
   search: string | null,
+  side: keyof UnitScrollOffsets,
   setSectionCollapsed: (section: string, collapsed: boolean) => void,
 ): ItemData => {
   if (!obj) {
     return {
-      exists: false,
+      obj,
       itemCount: 0,
       sections: [],
+      side,
       setSectionCollapsed,
     };
   }
+  const displaySections = display.displaySections(
+    obj,
+    {
+      mapping: undefined,
+      regex: search ?? undefined,
+    },
+    {
+      showHiddenSymbols: false,
+      showMappedSymbols: false,
+      reverseFnOrder: false,
+    },
+  );
   let itemCount = 0;
   const sections: SectionData[] = [];
-  const sectionCounts = new Map<string, number>();
-  let searchRegex: RegExp | null = null;
-  if (search) {
-    try {
-      searchRegex = new RegExp(search, 'i');
-    } catch (e) {
-      // Invalid regex, use it as a plain text search
-      searchRegex = new RegExp(RegExp.escape(search), 'i');
-    }
-  }
-  for (const section of obj.sections) {
+  for (const section of displaySections) {
     itemCount++;
-    const count = sectionCounts.get(section.name) || 0;
-    sectionCounts.set(section.name, count + 1);
-    const id = `${section.name}-${count}`;
-    const symbols = section.symbols.filter((s) =>
-      searchMatches(searchRegex, s),
-    );
-    if (searchRegex !== null && symbols.length === 0) {
+    if (search !== null && section.symbols.length === 0) {
       continue;
     }
-    if (collapsedSections[id]) {
+    if (collapsedSections[section.id]) {
       sections.push({
         ...section,
         symbols: [],
-        id,
         collapsed: true,
       });
       continue;
     }
-    itemCount += symbols.length;
+    itemCount += section.symbols.length;
     sections.push({
       ...section,
-      symbols,
-      id,
       collapsed: false,
     });
   }
   return {
-    exists: true,
+    obj,
     itemCount,
     sections,
+    side,
     setSectionCollapsed,
   };
 };
 const createItemDataLeft = memoizeOne(createItemDataFn);
 const createItemDataRight = memoizeOne(createItemDataFn);
 
-const SymbolsView = ({ diff }: { diff: DiffResult }) => {
+const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
   const { buildRunning, currentUnit } = useExtensionStore(
     useShallow((state) => ({
       buildRunning: state.buildRunning,
@@ -310,7 +321,7 @@ const SymbolsView = ({ diff }: { diff: DiffResult }) => {
     itemData: ItemData,
     side: keyof UnitScrollOffsets,
   ) => {
-    if (!itemData.exists) {
+    if (!itemData.obj) {
       return (
         <div className={clsx(styles.symbolList, styles.noObject)}>
           No object configured
@@ -321,7 +332,7 @@ const SymbolsView = ({ diff }: { diff: DiffResult }) => {
       <FixedSizeList
         key={`${side}-${currentUnitName}`}
         className={styles.symbolList}
-        height={height}
+        height={height - 1}
         itemCount={itemData.itemCount}
         itemSize={itemSize}
         width={width / 2}
@@ -344,12 +355,14 @@ const SymbolsView = ({ diff }: { diff: DiffResult }) => {
     diff.left,
     collapsedSections.left,
     search,
+    'left',
     setLeftSectionCollapsed,
   );
   const rightItemData = createItemDataRight(
     diff.right,
     collapsedSections.right,
     search,
+    'right',
     setRightSectionCollapsed,
   );
   return (
@@ -406,6 +419,27 @@ const SymbolsView = ({ diff }: { diff: DiffResult }) => {
           )}
         </AutoSizer>
       </div>
+      <TooltipShared
+        id="symbol-tooltip"
+        callback={(content) => {
+          const data: SymbolTooltipContent = JSON.parse(content);
+          let obj: diff.ObjectDiff | undefined;
+          switch (data.side) {
+            case 'left':
+              obj = diff.left;
+              break;
+            case 'right':
+              obj = diff.right;
+              break;
+            default:
+              break;
+          }
+          if (!obj) {
+            return null;
+          }
+          return display.symbolHover(obj, data.symbolRef);
+        }}
+      />
     </>
   );
 };

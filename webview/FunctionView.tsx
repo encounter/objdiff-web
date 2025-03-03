@@ -3,25 +3,25 @@ import headerStyles from './Header.module.css';
 
 import clsx from 'clsx';
 import memoizeOne from 'memoize-one';
+import { type diff, display } from 'objdiff-wasm';
 import { memo, useMemo } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, areEqual } from 'react-window';
 import type { ListChildComponentProps } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
-import { DiffKind } from '../shared/gen/diff_pb';
-import type {
-  Symbol as DiffSymbol,
-  InstructionDiff,
-  SymbolDiff,
-} from '../shared/gen/diff_pb';
-import { displayDiff } from './diff';
+import TooltipShared from './TooltipShared';
 import {
   type HighlightState,
   highlightColumn,
   highlightMatches,
   updateHighlight,
 } from './highlight';
-import { runBuild, useAppStore, useExtensionStore } from './state';
+import {
+  buildDiffConfig,
+  runBuild,
+  useAppStore,
+  useExtensionStore,
+} from './state';
 import { percentClass, useFontSize } from './util';
 
 const ROTATION_CLASSES = [
@@ -37,100 +37,118 @@ const ROTATION_CLASSES = [
 ];
 
 const AsmCell = ({
-  insDiff,
+  obj,
+  config,
   symbol,
+  row,
   column,
   highlight: highlightState,
   setHighlight,
 }: {
-  insDiff: InstructionDiff | undefined;
-  symbol: DiffSymbol | undefined;
+  obj: diff.ObjectDiff | undefined;
+  config: diff.DiffConfig;
+  symbol: display.SectionDisplaySymbol | null;
+  row: number;
   column: number;
   highlight: HighlightState;
   setHighlight: (highlight: HighlightState) => void;
 }) => {
-  if (!insDiff || !symbol) {
+  if (!obj || !symbol) {
     return <div className={styles.instructionCell} />;
   }
 
   const highlight = highlightColumn(highlightState, column);
   const out: React.ReactNode[] = [];
+
+  const insRow = display.displayInstructionRow(obj, symbol, row, config);
   let index = 0;
-  displayDiff(insDiff, symbol.address, (t) => {
+  for (const segment of insRow.segments) {
     let className: string | undefined;
-    if (t.diff_index != null) {
-      className = ROTATION_CLASSES[t.diff_index % ROTATION_CLASSES.length];
+    switch (segment.color.tag) {
+      case 'normal':
+        break;
+      case 'dim':
+        className = styles.segmentDim;
+        break;
+      case 'bright':
+        className = styles.segmentBright;
+        break;
+      case 'replace':
+        className = styles.segmentReplace;
+        break;
+      case 'delete':
+        className = styles.segmentDelete;
+        break;
+      case 'insert':
+        className = styles.segmentInsert;
+        break;
+      case 'rotating':
+        className =
+          ROTATION_CLASSES[segment.color.val % ROTATION_CLASSES.length];
+        break;
+      default:
+        console.warn('Unknown color type', segment.color);
+        break;
     }
+    const t = segment.text;
     let text = '';
     let postText = ''; // unhighlightable text after the token
-    let padTo = 0;
     let isToken = false;
-    switch (t.type) {
+    switch (t.tag) {
       case 'basic':
-        text = t.text;
-        break;
-      case 'basic_color':
-        text = t.text;
-        className = ROTATION_CLASSES[t.index % ROTATION_CLASSES.length];
+        text = t.val;
         break;
       case 'line':
-        text = (t.line_number || 0).toString(10);
-        className = styles.lineNumber;
-        padTo = 5;
+        text = t.val.toString(10);
         break;
       case 'address':
-        text = (t.address || 0).toString(16);
+        text = t.val.toString(16);
         postText = ':';
-        padTo = 5;
         isToken = true;
         break;
       case 'opcode':
-        text = t.mnemonic;
-        padTo = 8;
+        text = t.val.mnemonic;
         isToken = true;
-        if (insDiff.diff_kind === DiffKind.DIFF_OP_MISMATCH) {
-          className = styles.diff_change;
-        }
         break;
-      case 'argument': {
-        const value = t.value.value;
-        switch (value.oneofKind) {
-          case 'signed':
-            if (value.signed < 0) {
-              text = `-0x${(-value.signed).toString(16)}`;
-            } else {
-              text = `0x${value.signed.toString(16)}`;
-            }
-            break;
-          case 'unsigned':
-            text = `0x${value.unsigned.toString(16)}`;
-            break;
-          case 'opaque':
-            text = value.opaque;
-            break;
+      case 'signed':
+        if (t.val < 0) {
+          text = `-0x${(-t.val).toString(16)}`;
+        } else {
+          text = `0x${t.val.toString(16)}`;
         }
         isToken = true;
         break;
-      }
-      case 'branch_dest':
-        text = (t.address || 0).toString(16);
+      case 'unsigned':
+        text = `0x${t.val.toString(16)}`;
         isToken = true;
         break;
-      case 'symbol': {
-        const symbol = t.target.symbol as DiffSymbol;
-        text = symbol.demangled_name || symbol.name;
-        if (t.diff_index == null) {
-          className = styles.symbol;
+      case 'opaque':
+        text = t.val;
+        isToken = true;
+        break;
+      case 'branch-dest':
+        text = t.val.toString(16);
+        isToken = true;
+        break;
+      case 'symbol':
+        text = t.val.demangledName || t.val.name;
+        isToken = true;
+        break;
+      case 'addend':
+        if (t.val < 0) {
+          text = `-0x${(-t.val).toString(16)}`;
+        } else {
+          text = `+0x${t.val.toString(16)}`;
         }
-        isToken = true;
         break;
-      }
       case 'spacing':
-        text = ' '.repeat(t.count);
+        text = ' '.repeat(t.val);
         break;
+      case 'eol':
+        continue;
       default:
         console.warn('Unknown text type', t);
-        return null;
+        break;
     }
     out.push(
       <span
@@ -151,39 +169,55 @@ const AsmCell = ({
     );
     index++;
     if (postText) {
-      out.push(<span key={index}>{postText}</span>);
+      out.push(
+        <span key={index} className={className}>
+          {postText}
+        </span>,
+      );
       index++;
     }
-    if (padTo > text.length + postText.length) {
-      const spacing = ' '.repeat(padTo - text.length - postText.length);
+    if (segment.padTo > text.length + postText.length) {
+      const spacing = ' '.repeat(segment.padTo - text.length - postText.length);
       out.push(<span key={index}>{spacing}</span>);
       index++;
     }
-  });
+  }
 
   const classes = [styles.instructionCell];
-  if (insDiff.diff_kind) {
-    classes.push(styles.diff_any);
+  if (insRow.diffKind !== 'none') {
+    classes.push(styles.diffAny);
   }
-  switch (insDiff.diff_kind) {
-    case DiffKind.DIFF_DELETE:
-      classes.push(styles.diff_remove);
-      break;
-    case DiffKind.DIFF_INSERT:
-      classes.push(styles.diff_add);
-      break;
-    case DiffKind.DIFF_REPLACE:
-      classes.push(styles.diff_change);
-      break;
+  if (!out.length) {
+    return <div className={clsx(classes)} />;
   }
 
-  return <div className={clsx(classes)}>{out}</div>;
+  const tooltipContent: InstructionTooltipContent = { column, row };
+  return (
+    <div
+      className={clsx(classes)}
+      data-tooltip-id="instruction-tooltip"
+      data-tooltip-content={JSON.stringify(tooltipContent)}
+    >
+      {out}
+    </div>
+  );
+};
+
+type InstructionTooltipContent = {
+  column: number;
+  row: number;
 };
 
 type ItemData = {
   itemCount: number;
-  left: SymbolDiff | null;
-  right: SymbolDiff | null;
+  symbolName: string;
+  result: diff.DiffResult;
+  config: diff.DiffConfig;
+  matchPercent?: number;
+  left: display.SectionDisplaySymbol | null;
+  leftSymbol: display.SymbolDisplay | null;
+  right: display.SectionDisplaySymbol | null;
+  rightSymbol: display.SymbolDisplay | null;
   highlight: HighlightState;
   setHighlight: (highlight: HighlightState) => void;
 };
@@ -192,10 +226,8 @@ const AsmRow = memo(
   ({
     index,
     style,
-    data: { left, right, highlight, setHighlight },
+    data: { result, config, left, right, highlight, setHighlight },
   }: ListChildComponentProps<ItemData>) => {
-    const leftIns = left?.instructions[index];
-    const rightIns = right?.instructions[index];
     return (
       <div
         className={styles.instructionRow}
@@ -212,15 +244,19 @@ const AsmRow = memo(
         }}
       >
         <AsmCell
-          insDiff={leftIns}
-          symbol={left?.symbol}
+          obj={result.left}
+          config={config}
+          symbol={left}
+          row={index}
           column={0}
           highlight={highlight}
           setHighlight={setHighlight}
         />
         <AsmCell
-          insDiff={rightIns}
-          symbol={right?.symbol}
+          obj={result.right}
+          config={config}
+          symbol={right}
+          row={index}
           column={1}
           highlight={highlight}
           setHighlight={setHighlight}
@@ -233,23 +269,41 @@ const AsmRow = memo(
 
 const createItemData = memoizeOne(
   (
-    left: SymbolDiff | null,
-    right: SymbolDiff | null,
+    result: diff.DiffResult,
+    left: display.SectionDisplaySymbol | null,
+    right: display.SectionDisplaySymbol | null,
     highlight: HighlightState,
     setHighlight: (highlight: HighlightState) => void,
   ): ItemData => {
+    const leftSymbol = left ? display.displaySymbol(result.left!, left) : null;
+    const rightSymbol = right
+      ? display.displaySymbol(result.right!, right)
+      : null;
     const itemCount = Math.max(
-      left?.instructions.length || 0,
-      right?.instructions.length || 0,
+      leftSymbol?.rowCount || 0,
+      rightSymbol?.rowCount || 0,
     );
-    return { itemCount, left, right, highlight, setHighlight };
+    const symbolName = leftSymbol?.name || rightSymbol?.name || '';
+    const config = buildDiffConfig(null);
+    return {
+      itemCount,
+      symbolName,
+      result,
+      config,
+      left,
+      leftSymbol,
+      right,
+      rightSymbol,
+      highlight,
+      setHighlight,
+    };
   },
 );
 
 const SymbolLabel = ({
   symbol,
 }: {
-  symbol: SymbolDiff | null;
+  symbol: display.SymbolDisplay | null;
 }) => {
   if (!symbol) {
     return (
@@ -258,21 +312,26 @@ const SymbolLabel = ({
       </span>
     );
   }
-  const demangledName = symbol.symbol?.demangled_name || symbol.symbol?.name;
+  const displayName = symbol.demangledName || symbol.name;
   return (
     <span
       className={clsx(headerStyles.label, headerStyles.emphasized)}
-      title={demangledName}
+      title={displayName}
     >
-      {demangledName}
+      {displayName}
     </span>
   );
 };
 
 const FunctionView = ({
+  diff,
   left,
   right,
-}: { left: SymbolDiff | null; right: SymbolDiff | null }) => {
+}: {
+  diff: diff.DiffResult;
+  left: display.SectionDisplaySymbol | null;
+  right: display.SectionDisplaySymbol | null;
+}) => {
   const { buildRunning, currentUnit, lastBuilt } = useExtensionStore(
     useShallow((state) => ({
       buildRunning: state.buildRunning,
@@ -291,29 +350,27 @@ const FunctionView = ({
       })),
     );
 
-  const symbolName = left?.symbol?.name || right?.symbol?.name || '';
+  const itemData = createItemData(diff, left, right, highlight, setHighlight);
   const initialScrollOffset = useMemo(
     () =>
       useAppStore.getState().getUnitState(currentUnitName).symbolScrollOffsets[
-        symbolName
+        itemData.symbolName
       ] || 0,
-    [currentUnitName, symbolName],
+    [currentUnitName, itemData.symbolName],
   );
 
   const itemSize = useFontSize() * 1.33;
-  const itemData = createItemData(left, right, highlight, setHighlight);
-  const matchPercent = right?.match_percent;
   return (
     <>
       <div className={headerStyles.header}>
         <div className={headerStyles.column}>
           <div className={headerStyles.row}>
-            <button title="Back" onClick={() => setSelectedSymbol(null)}>
+            <button title="Back" onClick={() => setSelectedSymbol(null, null)}>
               <span className="codicon codicon-chevron-left" />
             </button>
           </div>
           <div className={headerStyles.row}>
-            <SymbolLabel symbol={left} />
+            <SymbolLabel symbol={itemData.leftSymbol} />
           </div>
         </div>
         <div className={headerStyles.column}>
@@ -332,20 +389,20 @@ const FunctionView = ({
             )}
           </div>
           <div className={headerStyles.row}>
-            {matchPercent !== undefined && (
+            {itemData.matchPercent !== undefined && (
               <>
                 <span
                   className={clsx(
                     headerStyles.label,
-                    percentClass(matchPercent),
+                    percentClass(itemData.matchPercent),
                   )}
                 >
-                  {Math.floor(matchPercent).toFixed(0)}%
+                  {Math.floor(itemData.matchPercent).toFixed(0)}%
                 </span>
                 {' | '}
               </>
             )}
-            <SymbolLabel symbol={right} />
+            <SymbolLabel symbol={itemData.rightSymbol} />
           </div>
         </div>
       </div>
@@ -362,7 +419,7 @@ const FunctionView = ({
               onScroll={(e) => {
                 setSymbolScrollOffset(
                   currentUnitName,
-                  symbolName,
+                  itemData.symbolName,
                   e.scrollOffset,
                 );
               }}
@@ -373,6 +430,35 @@ const FunctionView = ({
           )}
         </AutoSizer>
       </div>
+      <TooltipShared
+        id="instruction-tooltip"
+        callback={(content) => {
+          const data: InstructionTooltipContent = JSON.parse(content);
+          let obj: diff.ObjectDiff | undefined;
+          let symbol: display.SectionDisplaySymbol | undefined;
+          switch (data.column) {
+            case 0:
+              obj = diff.left;
+              symbol = itemData.left ?? undefined;
+              break;
+            case 1:
+              obj = diff.right;
+              symbol = itemData.right ?? undefined;
+              break;
+            default:
+              break;
+          }
+          if (!obj || !symbol) {
+            return null;
+          }
+          return display.instructionHover(
+            obj,
+            symbol,
+            data.row,
+            itemData.config,
+          );
+        }}
+      />
     </>
   );
 };

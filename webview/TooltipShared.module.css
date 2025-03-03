@@ -1,0 +1,23 @@
+.tooltip {
+  max-width: 80vw;
+  background-color: var(--panel-background) !important;
+}
+
+.hover-item {
+  font-family: var(--code-font-family);
+  font-weight: var(--code-font-weight);
+  font-size: var(--code-font-size);
+  word-break: break-word;
+}
+
+.hover-item-label {
+  color: var(--color-blue);
+}
+
+.hover-item-value {
+  color: var(--color-bright);
+}
+
+.hover-item-separator {
+  border-color: var(--color-muted);
+}

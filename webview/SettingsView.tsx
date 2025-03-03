@@ -1,6 +1,7 @@
 import headerStyles from './Header.module.css';
 import styles from './SettingsView.module.css';
 
+import { version as wasmVersion } from 'objdiff-wasm';
 import {
   CONFIG_SCHEMA,
   type ConfigPropertyBoolean,
@@ -111,6 +112,14 @@ const SettingsView = () => {
         <button onClick={() => openSettings()}>Open in Editor</button>
       </div>
       <div className={styles.container}>
+        <h1 className={styles.header}>About</h1>
+        <p>
+          <strong>Extension version:</strong>{' '}
+          {window.webviewProps?.extensionVersion ?? 'Not available'}
+        </p>
+        <p>
+          <strong>objdiff version:</strong> {wasmVersion()}
+        </p>
         <h1 className={styles.header}>Settings</h1>
         {items}
       </div>

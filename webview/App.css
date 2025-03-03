@@ -26,6 +26,7 @@
   --color-red: #f85149;
   --color-blue: #add8e6;
   --color-muted: var(--vscode-disabledForeground, rgba(204, 204, 204, 0.5));
+  --color-bright: light-dark(black, white);
 
   --panel-background: var(--vscode-panel-background, #181818);
   --panel-separator: var(--vscode-menu-separatorBackground, #454545);
@@ -71,6 +72,12 @@
   --checkbox-border-color: var(--vscode-settings-checkboxBorder, #3c3c3c);
 
   color-scheme: light dark;
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
 }
 
 body {

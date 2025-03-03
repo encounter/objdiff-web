@@ -1,6 +1,10 @@
 import * as vscode from 'vscode';
 import type { Unit } from '../shared/config';
-import type { InboundMessage, OutboundMessage } from '../shared/messages';
+import type {
+  InboundMessage,
+  OutboundMessage,
+  WebviewProps,
+} from '../shared/messages';
 import { Workspace } from './workspace';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -42,7 +46,6 @@ export function activate(context: vscode.ExtensionContext) {
     workspace = new Workspace(
       chan,
       vscode.workspace.workspaceFolders[0],
-      storageUri,
       deferredCurrentUnit,
     );
     workspace.onDidChangeProjectConfig(
@@ -61,7 +64,8 @@ export function activate(context: vscode.ExtensionContext) {
         if (!unit) {
           sendMessage({
             type: 'state',
-            data: null,
+            leftObject: null,
+            rightObject: null,
             currentUnit: null,
           });
         }
@@ -73,7 +77,8 @@ export function activate(context: vscode.ExtensionContext) {
       (data) => {
         sendMessage({
           type: 'state',
-          data: data?.buffer || null,
+          leftObject: data?.leftObject?.buffer || null,
+          rightObject: data?.rightObject?.buffer || null,
           currentUnit: workspace?.currentUnit || null,
         });
       },
@@ -244,8 +249,17 @@ export function activate(context: vscode.ExtensionContext) {
         // For development, allow static assets (production will be inlined)
         html = html.replaceAll(/"\/static\/(.*?)"/g, (_, p) => {
           const assetUri = vscode.Uri.joinPath(webviewRoot, 'static', p);
-          return `"${view.webview.asWebviewUri(assetUri)}"`;
+          return JSON.stringify(view.webview.asWebviewUri(assetUri).toString());
         });
+        // Inject extension information into the webview
+        const props: WebviewProps = {
+          extensionVersion: context.extension.packageJSON.version,
+          resourceRoot: `${view.webview.asWebviewUri(webviewRoot).toString()}/`,
+        };
+        html = html.replace(
+          '<head>',
+          `<head><script>window.webviewProps=${JSON.stringify(props)}</script>`,
+        );
         view.webview.options = {
           localResourceRoots: [context.extensionUri],
           enableScripts: true,
@@ -257,7 +271,8 @@ export function activate(context: vscode.ExtensionContext) {
           buildRunning: workspace?.buildRunning || false,
           configProperties: workspace?.configProperties || {},
           currentUnit: workspace?.currentUnit || null,
-          data: workspace?.cachedData?.buffer || null,
+          leftObject: workspace?.cachedData?.leftObject?.buffer || null,
+          rightObject: workspace?.cachedData?.rightObject?.buffer || null,
           projectConfig: workspace?.projectConfig || null,
         } as InboundMessage);
         view.webview.onDidReceiveMessage(
@@ -269,7 +284,8 @@ export function activate(context: vscode.ExtensionContext) {
                 buildRunning: workspace?.buildRunning || false,
                 configProperties: workspace?.configProperties || {},
                 currentUnit: workspace?.currentUnit || null,
-                data: workspace?.cachedData?.buffer || null,
+                leftObject: workspace?.cachedData?.leftObject?.buffer || null,
+                rightObject: workspace?.cachedData?.rightObject?.buffer || null,
                 projectConfig: workspace?.projectConfig || null,
               } as InboundMessage);
               chan.info('Webview ready');

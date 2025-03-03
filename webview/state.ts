@@ -1,12 +1,17 @@
+import { diff } from 'objdiff-wasm';
 import { create } from 'zustand/react';
-import type {
-  ConfigProperties,
-  ConfigPropertyValue,
-  ProjectConfig,
-  Unit,
+import {
+  type ConfigProperties,
+  type ConfigPropertyValue,
+  type ProjectConfig,
+  type Unit,
+  getModifiedConfigProperties,
 } from '../shared/config';
-import { DiffResult } from '../shared/gen/diff_pb';
-import type { SetCurrentUnitMessage } from '../shared/messages';
+import type {
+  BuildStatus,
+  SetCurrentUnitMessage,
+  StateMessage,
+} from '../shared/messages';
 import type { InboundMessage, OutboundMessage } from '../shared/messages';
 import {
   type HighlightState,
@@ -16,8 +21,8 @@ import {
 import { mockVsCode } from './mock';
 
 export type SymbolRefByName = {
-  symbol_name: string;
-  section_name: string | null;
+  symbolName: string;
+  sectionName: string | null;
 };
 
 export type UnitScrollOffsets = {
@@ -47,7 +52,8 @@ const defaultUnitState: UnitState = {
 
 export type CurrentView = 'main' | 'settings';
 export interface AppState {
-  selectedSymbol: SymbolRefByName | null;
+  leftSymbol: SymbolRefByName | null;
+  rightSymbol: SymbolRefByName | null;
   unitsScrollOffset: number;
   unitStates: Record<string, UnitState>;
   highlight: HighlightState;
@@ -55,7 +61,10 @@ export interface AppState {
   collapsedUnits: Record<string, boolean>;
 
   getUnitState(unit: string): UnitState;
-  setSelectedSymbol: (selectedSymbol: SymbolRefByName | null) => void;
+  setSelectedSymbol: (
+    leftSymbol: SymbolRefByName | null,
+    rightSymbol: SymbolRefByName | null,
+  ) => void;
   setSymbolScrollOffset: (
     unit: string,
     symbolName: string,
@@ -94,7 +103,8 @@ export const useAppStore = create<AppState>((set) => {
     });
 
   return {
-    selectedSymbol: null,
+    leftSymbol: null,
+    rightSymbol: null,
     unitsScrollOffset: 0,
     unitStates: {},
     highlight: {
@@ -107,7 +117,8 @@ export const useAppStore = create<AppState>((set) => {
     getUnitState(unit) {
       return this.unitStates[unit] ?? defaultUnitState;
     },
-    setSelectedSymbol: (selectedSymbol) => set({ selectedSymbol }),
+    setSelectedSymbol: (leftSymbol, rightSymbol) =>
+      set({ leftSymbol, rightSymbol }),
     setSymbolScrollOffset: (unit, symbolName, offset) =>
       setUnitState(unit, (state) => ({
         ...state,
@@ -157,7 +168,11 @@ export type ExtensionState = {
   buildRunning: boolean;
   configProperties: ConfigProperties;
   currentUnit: Unit | null;
-  diff: DiffResult | null;
+  leftStatus: BuildStatus | null;
+  rightStatus: BuildStatus | null;
+  leftObject: diff.Object | null;
+  rightObject: diff.Object | null;
+  result: diff.DiffResult | null;
   lastBuilt: number | null;
   projectConfig: ProjectConfig | null;
   ready: boolean;
@@ -167,7 +182,11 @@ export const useExtensionStore = create<ExtensionState>(() => ({
   configProperties: {},
   currentUnit: null,
   currentView: 'main',
-  diff: null,
+  leftStatus: null,
+  rightStatus: null,
+  leftObject: null,
+  rightObject: null,
+  result: null,
   lastBuilt: null,
   projectConfig: null,
   ready: false,
@@ -232,7 +251,6 @@ useAppStore.subscribe((state) => {
         k !== 'setCurrentView' &&
         k !== 'setCollapsedUnit'
       ) {
-        // biome-ignore lint/suspicious/noExplicitAny: ignore
         serialized[k] = state[k] as any;
       }
     }
@@ -266,26 +284,77 @@ export function openSettings(): void {
   vsCode.postMessage({ type: 'openSettings' });
 }
 
+export function buildDiffConfig(msg: StateMessage | null): diff.DiffConfig {
+  const config = new diff.DiffConfig();
+  const props = getModifiedConfigProperties(
+    msg?.configProperties ?? useExtensionStore.getState().configProperties,
+  );
+  for (const key in props) {
+    if (props[key] != null) {
+      config.setProperty(key, props[key].toString());
+    }
+  }
+  return config;
+}
+
 window.addEventListener('message', (event) => {
   const message = event.data as InboundMessage;
   if (message.type === 'state') {
-    let diff: DiffResult | null | undefined;
-    if (message.data !== undefined) {
-      if (message.data) {
-        const start = performance.now();
-        diff = DiffResult.fromBinary(new Uint8Array(message.data));
-        const end = performance.now();
-        console.debug('Diff deserialization time:', end - start, 'ms');
-      } else {
-        diff = null;
-      }
-    }
     const newState: Partial<ExtensionState> = {
       ...message,
-      diff,
+      leftObject: undefined,
+      rightObject: undefined,
+      result: undefined,
       ready: true,
     };
-    if (diff) {
+    let diffConfig: diff.DiffConfig | null = null;
+    if (message.leftObject !== undefined) {
+      if (message.leftObject == null) {
+        newState.leftObject = null;
+      } else {
+        if (diffConfig == null) {
+          diffConfig = buildDiffConfig(message);
+        }
+        newState.leftObject = diff.Object.parse(
+          new Uint8Array(message.leftObject),
+          diffConfig,
+        );
+      }
+    }
+    if (message.rightObject !== undefined) {
+      if (message.rightObject == null) {
+        newState.rightObject = null;
+      } else {
+        if (diffConfig == null) {
+          diffConfig = buildDiffConfig(message);
+        }
+        newState.rightObject = diff.Object.parse(
+          new Uint8Array(message.rightObject),
+          diffConfig,
+        );
+      }
+    }
+    if (
+      newState.leftObject !== undefined ||
+      newState.rightObject !== undefined
+    ) {
+      if (newState.leftObject == null && newState.rightObject == null) {
+        newState.result = null;
+      } else {
+        const start = performance.now();
+        if (diffConfig == null) {
+          diffConfig = buildDiffConfig(message);
+        }
+        newState.result = diff.runDiff(
+          newState.leftObject ?? undefined,
+          newState.rightObject ?? undefined,
+          diffConfig,
+        );
+        const end = performance.now();
+        console.debug('Diff time:', end - start, 'ms');
+      }
+    }
+    if (newState.result) {
       newState.lastBuilt = Date.now();
     }
     for (const k in newState) {

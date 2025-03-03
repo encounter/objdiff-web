@@ -10,13 +10,13 @@ Open the project in Visual Studio Code.
 - Install dependencies:
 
   ```bash
-  npm install
+  pnpm install
   ```
 
 - Start dev server using `Ctrl+Shift+B` or by running:
 
   ```bash
-  npm run watch
+  pnpm watch
   ```
 
 - Run the extension in debug mode using `F5`.

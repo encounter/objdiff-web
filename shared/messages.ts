@@ -5,12 +5,27 @@ import type {
   Unit,
 } from './config';
 
+export type WebviewProps = {
+  extensionVersion: string;
+  resourceRoot: string;
+};
+
+export type BuildStatus = {
+  success: boolean;
+  cmdline: string;
+  stdout: string;
+  stderr: string;
+};
+
 export type StateMessage = {
   type: 'state';
   buildRunning?: boolean;
   configProperties?: ConfigProperties;
   currentUnit?: Unit | null;
-  data?: ArrayBuffer | null;
+  leftStatus?: BuildStatus | null;
+  rightStatus?: BuildStatus | null;
+  leftObject?: ArrayBuffer | null;
+  rightObject?: ArrayBuffer | null;
   projectConfig?: ProjectConfig | null;
 };
 

@@ -62,7 +62,7 @@
 }
 
 .symbol-name {
-  color: light-dark(black, white);
+  color: var(--color-bright);
 }
 
 .no-object {

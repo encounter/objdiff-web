@@ -257,7 +257,7 @@ export type ConfigSchema = {
   groups: ConfigGroup[];
 };
 
-import configSchema from './config-schema.json';
+import configSchema from 'objdiff-wasm/dist/config-schema.json';
 export const CONFIG_SCHEMA = configSchema as ConfigSchema;
 
 export function getPropertyValue(

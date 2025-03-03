@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';
+import path from 'node:path';
 import { type RequestHandler, defineConfig } from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
 import { pluginTypeCheck } from '@rsbuild/plugin-type-check';
@@ -92,15 +93,27 @@ export default defineConfig({
   },
 });
 
+const PROJECT_ROOT = '../prime';
+
 // Mock API middleware for development.
 const apiMiddleware: RequestHandler = (req, res, next) => {
-  if (req.method === 'GET' && req.url === '/api/project') {
-    return sendFile(res, '../prime/objdiff.json', 'application/json');
+  if (!req.url || !req.headers.host || req.method !== 'GET') {
+    return next();
   }
-  if (req.method === 'GET' && req.url === '/api/diff') {
-    return sendFile(res, '../prime/diff.binpb', 'application/octet-stream');
+  const url = new URL(req.url, `http://${req.headers.host}`);
+  if (!url) {
+    return next();
   }
-  next();
+  if (url.pathname === '/api/get') {
+    const file = url.searchParams.get('path');
+    if (file) {
+      const filepath = path.join(PROJECT_ROOT, file);
+      if (filepath.startsWith(PROJECT_ROOT)) {
+        return sendFile(res, filepath, 'application/octet-stream');
+      }
+    }
+  }
+  return next();
 };
 
 // Send a file as a response.
@@ -115,7 +128,6 @@ function sendFile(
       throw err;
     }
     let statusCode = 500;
-    // biome-ignore lint/suspicious/noExplicitAny: Node error
     if ((err as any).code === 'ENOENT') {
       statusCode = 404;
     }

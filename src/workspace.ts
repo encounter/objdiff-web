@@ -1,4 +1,5 @@
 import * as picomatch from 'picomatch';
+import { Shescape } from 'shescape';
 import * as vscode from 'vscode';
 import {
   CONFIG_FILENAME,
@@ -6,13 +7,23 @@ import {
   type ConfigPropertyValue,
   type ProjectConfig,
   type Unit,
-  getModifiedConfigProperties,
   resolveProjectConfig,
 } from '../shared/config';
+import {
+  DirectTaskExecutor,
+  type Task,
+  type TaskResult,
+  VscodeTaskExecutor,
+} from './util';
+
+export type BuildData = {
+  leftObject: Uint8Array | null;
+  rightObject: Uint8Array | null;
+};
 
 export class Workspace extends vscode.Disposable {
   public buildRunning = false;
-  public cachedData: Uint8Array | null = null;
+  public cachedData: BuildData | null = null;
   public configProperties: ConfigProperties = {};
   public currentUnit?: Unit;
   public projectConfig?: ProjectConfig;
@@ -22,11 +33,14 @@ export class Workspace extends vscode.Disposable {
   public onDidChangeConfigProperties: vscode.Event<ConfigProperties>;
   public onDidChangeCurrentUnit: vscode.Event<Unit | undefined>;
   public onDidChangeBuildRunning: vscode.Event<boolean>;
-  public onDidChangeData: vscode.Event<Uint8Array | null>;
+  public onDidChangeData: vscode.Event<BuildData | null>;
 
   private subscriptions: vscode.Disposable[] = [];
   private wwSubscriptions: vscode.Disposable[] = [];
   private pathMatcher?: picomatch.Matcher;
+
+  private buildTaskExecutor: VscodeTaskExecutor;
+  private directTaskExecutor: DirectTaskExecutor;
 
   private didChangeBuildRunningEmitter = new vscode.EventEmitter<boolean>();
   private didChangeConfigPropertiesEmitter =
@@ -34,7 +48,7 @@ export class Workspace extends vscode.Disposable {
   private didChangeCurrentUnitEmitter = new vscode.EventEmitter<
     Unit | undefined
   >();
-  private didChangeDataEmitter = new vscode.EventEmitter<Uint8Array | null>();
+  private didChangeDataEmitter = new vscode.EventEmitter<BuildData | null>();
   private didChangeProjectConfigEmitter = new vscode.EventEmitter<
     ProjectConfig | undefined
   >();
@@ -42,7 +56,6 @@ export class Workspace extends vscode.Disposable {
   constructor(
     public readonly chan: vscode.LogOutputChannel,
     public readonly workspaceFolder: vscode.WorkspaceFolder,
-    private readonly storageUri: vscode.Uri,
     public deferredCurrentUnit?: string,
   ) {
     super(() => {
@@ -55,11 +68,9 @@ export class Workspace extends vscode.Disposable {
     this.onDidChangeData = this.didChangeDataEmitter.event;
     this.onDidChangeProjectConfig = this.didChangeProjectConfigEmitter.event;
 
-    vscode.tasks.onDidEndTaskProcess(
-      this.onDidEndTaskProcess,
-      this,
-      this.subscriptions,
-    );
+    this.buildTaskExecutor = new VscodeTaskExecutor(workspaceFolder);
+    this.directTaskExecutor = new DirectTaskExecutor(workspaceFolder);
+
     vscode.workspace.onDidChangeConfiguration(
       this.onDidChangeConfiguration,
       this,
@@ -90,7 +101,6 @@ export class Workspace extends vscode.Disposable {
     chan.info(`Initialized workspace: ${this.workspaceFolder.uri.toString()}`);
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: pass through message args
   showError(message: string, ...args: any[]) {
     this.chan.error(message, ...args);
     vscode.window
@@ -104,7 +114,6 @@ export class Workspace extends vscode.Disposable {
       });
   }
 
-  // biome-ignore lint/suspicious/noExplicitAny: pass through message args
   showWarning(message: string, ...args: any[]) {
     this.chan.warn(message, ...args);
     vscode.window.showWarningMessage(`objdiff: ${message}`);
@@ -262,7 +271,7 @@ export class Workspace extends vscode.Disposable {
     return true;
   }
 
-  tryBuild() {
+  async tryBuild() {
     if (this.buildRunning) {
       return;
     }
@@ -283,143 +292,99 @@ export class Workspace extends vscode.Disposable {
     const basePath =
       this.currentUnit.base_path &&
       vscode.Uri.joinPath(this.workspaceFolder.uri, this.currentUnit.base_path);
-    this.chan.info('Diffing', targetPath?.toString(), basePath?.toString());
     if (!targetPath && !basePath) {
       this.showWarning('No target or base path');
       return;
     }
-    const buildCmd = this.projectConfig.custom_make || 'make';
-    const buildArgs = this.projectConfig.custom_args || [];
-    const hash = cyrb53(this.workspaceFolder.uri.toString());
-    const outputUri = vscode.Uri.joinPath(
-      this.storageUri,
-      `diff_${hash}.binpb`,
-    );
-    const args = [];
-    if (this.currentUnit.target_path && this.projectConfig.build_target) {
-      if (args.length) {
-        args.push('&&');
-      }
-      args.push(buildCmd, ...buildArgs, this.currentUnit.target_path);
-    }
-    if (
-      this.currentUnit.base_path &&
-      (this.projectConfig.build_base ||
-        this.projectConfig.build_base === undefined)
-    ) {
-      if (args.length) {
-        args.push('&&');
-      }
-      args.push(buildCmd, ...buildArgs, this.currentUnit.base_path);
-    }
-    if (args.length) {
-      args.push('&&');
-    }
-    const binaryPath = this.configProperties.binaryPath as string | undefined;
-    if (!binaryPath) {
-      vscode.window
-        .showWarningMessage('objdiff.binaryPath not set', {
-          title: 'Open settings',
-        })
-        .then((item) => {
-          if (item) {
-            vscode.commands.executeCommand(
-              'workbench.action.openSettings',
-              'objdiff.binaryPath',
-            );
-          }
-        });
-      return;
-    }
-    args.push(binaryPath, 'diff');
-    if (targetPath) {
-      args.push('-1', targetPath.fsPath);
-    }
-    if (basePath) {
-      args.push('-2', basePath.fsPath);
-    }
-    args.push('--format', 'proto', '-o', outputUri.fsPath);
-    const configProperties = getModifiedConfigProperties(this.configProperties);
-    for (const key in configProperties) {
-      args.push('-c', `${key}=${configProperties[key]}`);
-    }
-    const startTime = performance.now();
-    const task = new vscode.Task(
-      {
-        type: 'objdiff',
-        taskType: 'build',
-        startTime,
-      },
-      this.workspaceFolder,
-      'objdiff',
-      'objdiff',
-      new vscode.ShellExecution(args[0], args.slice(1)),
-    );
-    task.presentationOptions.reveal = vscode.TaskRevealKind.Silent;
+
     this.buildRunning = true;
     this.didChangeBuildRunningEmitter.fire(true);
-    vscode.tasks.executeTask(task).then(
-      ({ task, terminate: _ }) => {
-        const curTime = performance.now();
-        this.chan.info(
-          'Diff task started in',
-          curTime - task.definition.startTime,
-        );
-      },
-      (reason) => {
-        this.showError('Failed to start diff task', reason);
-      },
-    );
-  }
-
-  private async onDidEndTaskProcess(e: vscode.TaskProcessEndEvent) {
-    if (e.execution.task.definition.type !== 'objdiff') {
-      return;
-    }
     try {
-      const endTime = performance.now();
-      this.chan.info(
-        'Task ended',
-        e.exitCode,
-        endTime - e.execution.task.definition.startTime,
-      );
-      const proc = e.execution.task.execution as vscode.ProcessExecution;
-      const outputFile = proc.args[proc.args.indexOf('-o') + 1];
-      const outputUri = vscode.Uri.file(outputFile);
-      if (e.exitCode === 0) {
-        const data = await vscode.workspace.fs.readFile(outputUri);
-        this.chan.info(
-          'Read output file',
-          outputFile,
-          'with size',
-          data.byteLength,
-        );
-        this.cachedData = data;
-        this.didChangeDataEmitter.fire(data);
-      } else {
-        this.showError(`Build failed with code ${e.exitCode}`);
-      }
-      let exists = false;
-      try {
-        const stat = await vscode.workspace.fs.stat(outputUri);
-        exists = stat.type === vscode.FileType.File;
-      } catch (reason) {
-        if (
-          reason instanceof vscode.FileSystemError &&
-          reason.code !== 'FileNotFound'
-        ) {
-          throw reason;
+      const buildCmd = this.projectConfig.custom_make || 'make';
+      const buildArgs = this.projectConfig.custom_args || [];
+
+      // Build target object
+      if (this.currentUnit.target_path && this.projectConfig.build_target) {
+        const result = await this.runTask({
+          type: 'objdiff',
+          command: buildCmd,
+          args: [...buildArgs, this.currentUnit.target_path],
+        });
+        if (result.code !== 0) {
+          this.showError(`Target build failed with code ${result.code}`);
+          return;
         }
       }
-      if (exists) {
-        await vscode.workspace.fs.delete(outputUri);
+
+      // Build base object
+      if (
+        this.currentUnit.base_path &&
+        (this.projectConfig.build_base ||
+          this.projectConfig.build_base === undefined)
+      ) {
+        const result = await this.runTask({
+          type: 'objdiff',
+          command: buildCmd,
+          args: [...buildArgs, this.currentUnit.base_path],
+        });
+        if (result.code !== 0) {
+          this.showError(`Base build failed with code ${result.code}`);
+          return;
+        }
       }
+
+      // Read target object
+      let targetData: Uint8Array | null = null;
+      if (targetPath) {
+        targetData = await vscode.workspace.fs.readFile(targetPath);
+      }
+
+      // Read base object
+      let baseData: Uint8Array | null = null;
+      if (basePath) {
+        baseData = await vscode.workspace.fs.readFile(basePath);
+      }
+
+      this.cachedData = { leftObject: targetData, rightObject: baseData };
+      this.didChangeDataEmitter.fire(this.cachedData);
     } catch (reason) {
-      this.showError('Failed to process build result', reason);
+      this.showError('Failed to execute build', reason);
     } finally {
       this.buildRunning = false;
       this.didChangeBuildRunningEmitter.fire(false);
     }
+  }
+
+  private async runTask(task: Task): Promise<TaskResult> {
+    this.logTask(task);
+    const result = await this.directTaskExecutor.run(task);
+    this.logTaskResult(task, result);
+    return result;
+  }
+
+  private logTask(task: Task) {
+    const command = new Shescape({ flagProtection: false, shell: true })
+      .quoteAll([task.command, ...task.args])
+      .join(' ');
+    this.chan.info('Executing', command);
+  }
+
+  private logTaskResult(task: Task, result: TaskResult) {
+    if (result.code === 0) {
+      const endTime = performance.now();
+      const elapsed = (endTime - result.startTime).toFixed(0);
+      this.chan.info(`Command ${task.command} succeeded in ${elapsed}ms`);
+      return;
+    }
+    this.chan.error(
+      [
+        `Command ${task.command} failed with code ${result.code}`,
+        result.stdout,
+        result.stderr,
+      ]
+        .filter(Boolean)
+        .join('\n'),
+    );
   }
 
   private async onDidChangeConfiguration(e: vscode.ConfigurationChangeEvent) {
@@ -455,6 +420,7 @@ export class Workspace extends vscode.Disposable {
 
   private disposeImpl() {
     this.chan.info('Disposing workspace');
+    this.buildTaskExecutor.dispose();
     this.projectConfigWatcher.dispose();
     for (const sub of this.wwSubscriptions) {
       sub.dispose();
@@ -467,28 +433,4 @@ export class Workspace extends vscode.Disposable {
     }
     this.subscriptions = [];
   }
-}
-
-/**
- * cyrb53 (c) 2018 bryc (github.com/bryc)
- * License: Public domain (or MIT if needed). Attribution appreciated.
- * A fast and simple 53-bit string hash function with decent collision resistance.
- * Largely inspired by MurmurHash2/3, but with a focus on speed/simplicity.
- */
-function cyrb53(str: string, seed = 0) {
-  let h1 = 0xdeadbeef ^ seed;
-  let h2 = 0x41c6ce57 ^ seed;
-  for (let i = 0; i < str.length; i++) {
-    const ch = str.charCodeAt(i);
-    h1 = Math.imul(h1 ^ ch, 2654435761);
-    h2 = Math.imul(h2 ^ ch, 1597334677);
-  }
-  h1 = Math.imul(h1 ^ (h1 >>> 16), 2246822507);
-  h1 ^= Math.imul(h2 ^ (h2 >>> 13), 3266489909);
-  h2 = Math.imul(h2 ^ (h2 >>> 16), 2246822507);
-  h2 ^= Math.imul(h1 ^ (h1 >>> 13), 3266489909);
-  return (
-    (h2 >>> 0).toString(16).padStart(8, '0') +
-    (h1 >>> 0).toString(16).padStart(8, '0')
-  );
 }

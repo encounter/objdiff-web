@@ -27,6 +27,12 @@
       "recommended": true,
       "a11y": {
         "all": false
+      },
+      "suspicious": {
+        "noExplicitAny": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off"
       }
     }
   }

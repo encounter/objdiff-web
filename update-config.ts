@@ -3,12 +3,13 @@ import { CONFIG_SCHEMA } from './shared/config';
 
 const packageJson = JSON.parse(readFileSync('./package.json', 'utf-8'));
 const extensionConfig = packageJson.contributes.configuration.find(
-  // biome-ignore lint/suspicious/noExplicitAny: ignore
   (config: any) => config.title === 'Extension',
 );
-const categories = [extensionConfig];
+const categories: any[] = [];
+if (extensionConfig) {
+  categories.push(extensionConfig);
+}
 for (const group of CONFIG_SCHEMA.groups) {
-  // biome-ignore lint/suspicious/noExplicitAny: ignore
   const category: any = {
     title: group.name,
     properties: {},
@@ -18,7 +19,6 @@ for (const group of CONFIG_SCHEMA.groups) {
     if (!property) {
       continue;
     }
-    // biome-ignore lint/suspicious/noExplicitAny: ignore
     const config: any = {
       type: property.type === 'boolean' ? 'boolean' : 'string',
       description: property.description,

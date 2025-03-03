@@ -1,9 +1,18 @@
-import { type ProjectConfig, resolveProjectConfig } from '../shared/config';
-import type { InboundMessage, OutboundMessage } from '../shared/messages';
+import {
+  type ProjectConfig,
+  type Unit,
+  resolveProjectConfig,
+} from '../shared/config';
+import type {
+  InboundMessage,
+  OutboundMessage,
+  StateMessage,
+} from '../shared/messages';
 import type { AppStateSerialized, MyWebviewApi } from './state';
 
 let state: AppStateSerialized | undefined = {
-  selectedSymbol: null,
+  leftSymbol: null,
+  rightSymbol: null,
   unitsScrollOffset: 0,
   unitStates: {},
   highlight: JSON.stringify({
@@ -14,64 +23,114 @@ let state: AppStateSerialized | undefined = {
   collapsedUnits: {},
 };
 
+const serializedState = localStorage.getItem('state');
+if (serializedState) {
+  state = JSON.parse(serializedState);
+}
+
 function sendMessage(data: InboundMessage) {
   window.dispatchEvent(new MessageEvent('message', { data }));
 }
 
-async function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
+// async function delay(ms: number) {
+//   return new Promise((resolve) => setTimeout(resolve, ms));
+// }
 
 let resolvedProjectConfig: ProjectConfig | null = null;
+
+async function fetchFile(path: string): Promise<Response> {
+  const search = new URLSearchParams();
+  search.set('path', path);
+  const response = await fetch(`/api/get?${search.toString()}`);
+  if (!response.ok) {
+    throw new Error(`Failed to fetch ${path}: ${response.statusText}`);
+  }
+  return response;
+}
+
+let lastUnit: Unit | null = null;
+
+const serializedLastUnit = localStorage.getItem('lastUnit');
+if (serializedLastUnit) {
+  lastUnit = JSON.parse(serializedLastUnit);
+}
 
 async function handleMessage(msg: OutboundMessage): Promise<void> {
   switch (msg.type) {
     case 'ready': {
-      const response = await fetch('/api/project');
+      const response = await fetchFile('objdiff.json');
       const projectConfig = await response.json();
       resolvedProjectConfig = resolveProjectConfig(projectConfig);
-      sendMessage({
+      const out: StateMessage = {
         type: 'state',
         buildRunning: false,
         configProperties: {},
         currentUnit: null,
-        data: null,
+        leftObject: null,
+        rightObject: null,
         projectConfig: resolvedProjectConfig,
-      });
+      };
+      if (lastUnit) {
+        out.leftObject = await fetchFile(lastUnit.target_path ?? '').then((r) =>
+          r.arrayBuffer(),
+        );
+        out.rightObject = await fetchFile(lastUnit.base_path ?? '').then((r) =>
+          r.arrayBuffer(),
+        );
+      }
+      sendMessage(out);
       break;
     }
-    case 'runTask':
+    case 'runTask': {
       sendMessage({ type: 'state', buildRunning: true });
-      await delay(1000);
-      sendMessage({ type: 'state', buildRunning: false });
-      break;
-    case 'setCurrentUnit': {
-      let data: ArrayBuffer | null = null;
-      if (msg.unit) {
-        sendMessage({ type: 'state', buildRunning: true });
-        await delay(1000);
-        const response = await fetch('/api/diff');
-        data = await response.arrayBuffer();
+      const out: StateMessage = {
+        type: 'state',
+        buildRunning: false,
+        leftObject: null,
+        rightObject: null,
+      };
+      if (lastUnit) {
+        out.leftObject = await fetchFile(lastUnit.target_path ?? '').then((r) =>
+          r.arrayBuffer(),
+        );
+        out.rightObject = await fetchFile(lastUnit.base_path ?? '').then((r) =>
+          r.arrayBuffer(),
+        );
       }
-      if (msg.unit === 'source') {
-        sendMessage({
-          type: 'state',
-          buildRunning: false,
-          currentUnit: resolvedProjectConfig?.units?.[0] ?? null,
-          data,
-        });
-      } else {
-        sendMessage({
-          type: 'state',
-          buildRunning: false,
-          currentUnit: msg.unit,
-          data,
-        });
-      }
+      sendMessage(out);
       break;
     }
-    default:
+    case 'setCurrentUnit': {
+      let unit: Unit | null = null;
+      if (msg.unit === 'source') {
+        unit = resolvedProjectConfig?.units?.[0] ?? null;
+      } else if (msg.unit) {
+        unit = msg.unit;
+      }
+      const out: StateMessage = {
+        type: 'state',
+        buildRunning: false,
+        currentUnit: unit,
+        leftObject: null,
+        rightObject: null,
+      };
+      if (unit) {
+        sendMessage({ type: 'state', buildRunning: true });
+        out.leftObject = await fetchFile(unit.target_path ?? '').then((r) =>
+          r.arrayBuffer(),
+        );
+        out.rightObject = await fetchFile(unit.base_path ?? '').then((r) =>
+          r.arrayBuffer(),
+        );
+      }
+      lastUnit = unit;
+      localStorage.setItem('lastUnit', JSON.stringify(unit));
+      sendMessage(out);
+      break;
+    }
+    default: {
       console.warn('Unhandled message', msg);
+    }
   }
 }
 
@@ -82,6 +141,7 @@ export const mockVsCode: MyWebviewApi<AppStateSerialized> = {
   getState: () => state,
   setState: (newState) => {
     state = newState;
+    localStorage.setItem('state', JSON.stringify(newState));
     return newState;
   },
 };

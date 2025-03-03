@@ -1,5 +1,9 @@
-import type { ArgumentValue } from '../shared/gen/diff_pb';
-import type { DiffText } from './diff';
+import type { display } from 'objdiff-wasm';
+
+type ArgumentValue =
+  | display.DiffTextSigned
+  | display.DiffTextUnsigned
+  | display.DiffTextOpaque;
 
 type HighlightKindOpcode = {
   type: 'opcode';
@@ -36,25 +40,25 @@ function bigintAbs(v: bigint): bigint {
   return v < 0n ? -v : v;
 }
 
-function argEq(a: ArgumentValue, b: ArgumentValue): boolean {
-  if (a.value.oneofKind === 'signed') {
-    if (b.value.oneofKind === 'signed') {
-      return a.value.signed === b.value.signed;
+function argEq(a: display.DiffText, b: ArgumentValue): boolean {
+  if (a.tag === 'signed') {
+    if (b.tag === 'signed') {
+      return a.val === b.val;
     }
-    if (b.value.oneofKind === 'unsigned') {
-      return bigintAbs(a.value.signed) === b.value.unsigned;
-    }
-  }
-  if (a.value.oneofKind === 'unsigned') {
-    if (b.value.oneofKind === 'signed') {
-      return a.value.unsigned === bigintAbs(b.value.signed);
-    }
-    if (b.value.oneofKind === 'unsigned') {
-      return a.value.unsigned === b.value.unsigned;
+    if (b.tag === 'unsigned') {
+      return bigintAbs(a.val) === b.val;
     }
   }
-  if (a.value.oneofKind === 'opaque' && b.value.oneofKind === 'opaque') {
-    return a.value.opaque === b.value.opaque;
+  if (a.tag === 'unsigned') {
+    if (b.tag === 'signed') {
+      return a.val === bigintAbs(b.val);
+    }
+    if (b.tag === 'unsigned') {
+      return a.val === b.val;
+    }
+  }
+  if (a.tag === 'opaque' && b.tag === 'opaque') {
+    return a.val === b.val;
   }
   return false;
 }
@@ -68,24 +72,22 @@ export function highlightColumn(
 
 export function highlightMatches(
   highlight: HighlightKind | null,
-  text: DiffText,
+  text: display.DiffText,
 ): boolean {
   if (!highlight) {
     return false;
   }
   switch (highlight.type) {
     case 'opcode':
-      return text.type === 'opcode' && text.opcode === highlight.opcode;
+      return text.tag === 'opcode' && text.val.opcode === highlight.opcode;
     case 'argument':
-      return text.type === 'argument' && argEq(text.value, highlight.value);
+      return argEq(text, highlight.value);
     case 'symbol':
-      return (
-        text.type === 'symbol' && text.target.symbol?.name === highlight.name
-      );
+      return text.tag === 'symbol' && text.val.name === highlight.name;
     case 'address':
       return (
-        (text.type === 'address' || text.type === 'branch_dest') &&
-        text.address === highlight.address
+        (text.tag === 'address' || text.tag === 'branch-dest') &&
+        text.val === highlight.address
       );
   }
 }
@@ -112,17 +114,19 @@ export function highlightEq(a: HighlightKind | null, b: HighlightKind | null) {
   return false;
 }
 
-export function highlightFor(text: DiffText): HighlightKind | null {
-  switch (text.type) {
+export function highlightFor(text: display.DiffText): HighlightKind | null {
+  switch (text.tag) {
     case 'opcode':
-      return { type: 'opcode', opcode: text.opcode };
-    case 'argument':
-      return { type: 'argument', value: text.value };
+      return { type: 'opcode', opcode: text.val.opcode };
+    case 'signed':
+    case 'unsigned':
+    case 'opaque':
+      return { type: 'argument', value: text };
     case 'symbol':
-      return { type: 'symbol', name: text.target.symbol?.name || '' };
+      return { type: 'symbol', name: text.val.name };
     case 'address':
-    case 'branch_dest':
-      return { type: 'address', address: text.address };
+    case 'branch-dest':
+      return { type: 'address', address: text.val };
     default:
       return null;
   }
@@ -130,7 +134,7 @@ export function highlightFor(text: DiffText): HighlightKind | null {
 
 export function updateHighlight(
   state: HighlightState,
-  text: DiffText,
+  text: display.DiffText,
   column: number,
 ): HighlightState {
   const highlight = highlightFor(text);

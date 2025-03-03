@@ -1,9 +1,9 @@
 {
   "name": "objdiff",
   "displayName": "objdiff",
-  "description": "objdiff",
+  "description": "A local diffing tool for decompilation projects",
   "publisher": "decomp-dev",
-  "version": "0.0.2",
+  "version": "0.1.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/encounter/objdiff-code"
@@ -20,13 +20,15 @@
     "@protobuf-ts/runtime": "^2.9.4",
     "@vscode/codicons": "^0.0.36",
     "clsx": "^2.1.1",
-    "core-js": "^3.39.0",
     "memoize-one": "^6.0.0",
+    "objdiff-wasm": "^3.0.0-alpha.1",
     "picomatch": "^4.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "react-tooltip": "^5.28.0",
     "react-virtualized-auto-sizer": "^1.0.24",
     "react-window": "^1.8.10",
+    "shescape": "^2.1.1",
     "zustand": "^5.0.2"
   },
   "devDependencies": {
@@ -35,7 +37,6 @@
     "@rsbuild/plugin-react": "^1.0.7",
     "@rsbuild/plugin-type-check": "^1.1.0",
     "@rsbuild/plugin-typed-css-modules": "^1.0.2",
-    "@types/core-js": "^2.5.8",
     "@types/node": "^22.10.2",
     "@types/picomatch": "^3.0.1",
     "@types/react": "^18.3.1",
@@ -96,22 +97,30 @@
     ],
     "configuration": [
       {
-        "title": "Extension",
-        "properties": {
-          "objdiff.binaryPath": {
-            "type": "string",
-            "description": "Path to the objdiff-cli binary",
-            "scope": "machine"
-          }
-        }
-      },
-      {
         "title": "General",
         "properties": {
-          "objdiff.relaxRelocDiffs": {
-            "type": "boolean",
-            "description": "Ignores differences in relocation targets. (Address, name, etc)",
-            "default": false
+          "objdiff.functionRelocDiffs": {
+            "type": "string",
+            "description": "How relocation targets will be diffed in the function view.",
+            "default": "name_address",
+            "enum": [
+              "none",
+              "name_address",
+              "data_value",
+              "all"
+            ],
+            "enumItemLabels": [
+              "None",
+              "Name or address",
+              "Data value",
+              "Name or address, data value"
+            ],
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null
+            ]
           },
           "objdiff.spaceBetweenArgs": {
             "type": "boolean",
@@ -121,6 +130,11 @@
           "objdiff.combineDataSections": {
             "type": "boolean",
             "description": "Combines data sections with equal names.",
+            "default": false
+          },
+          "objdiff.combineTextSections": {
+            "type": "boolean",
+            "description": "Combines all text sections into one.",
             "default": false
           }
         }
@@ -323,6 +337,13 @@
         "view": "objdiff",
         "contents": "Loading..."
       }
+    ]
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "@biomejs/biome",
+      "core-js",
+      "esbuild"
     ]
   }
 }
