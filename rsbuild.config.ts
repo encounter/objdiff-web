@@ -107,6 +107,13 @@ const extensionConfig: RsbuildConfig = {
     hmr: false,
     liveReload: false,
   },
+  // Disable copying the public directory. This is only useful
+  // for the web configuration.
+  server: {
+    publicDir: {
+      copyOnBuild: false,
+    },
+  },
 };
 
 const buildType = process.env.BUILD_TYPE;
