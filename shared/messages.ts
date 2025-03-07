@@ -29,8 +29,22 @@ export type StateMessage = {
   projectConfig?: ProjectConfig | null;
 };
 
+// decomp.me colors
+export type Colors = {
+  background: string;
+};
+
+// decomp.me theme
+export type ThemeMessage = {
+  type: 'theme';
+  isDark: boolean;
+  colors: Colors;
+  codeFont?: string;
+  codeFontSize?: number;
+};
+
 // extension -> webview
-export type InboundMessage = StateMessage;
+export type InboundMessage = StateMessage | ThemeMessage;
 
 export type ReadyMessage = {
   type: 'ready';

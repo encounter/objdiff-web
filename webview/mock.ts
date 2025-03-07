@@ -1,4 +1,5 @@
 import {
+  type ConfigProperties,
   type ProjectConfig,
   type Unit,
   resolveProjectConfig,
@@ -32,10 +33,6 @@ function sendMessage(data: InboundMessage) {
   window.dispatchEvent(new MessageEvent('message', { data }));
 }
 
-// async function delay(ms: number) {
-//   return new Promise((resolve) => setTimeout(resolve, ms));
-// }
-
 let resolvedProjectConfig: ProjectConfig | null = null;
 
 async function fetchFile(path: string): Promise<Response> {
@@ -55,6 +52,13 @@ if (serializedLastUnit) {
   lastUnit = JSON.parse(serializedLastUnit);
 }
 
+let configProperties: ConfigProperties = {};
+
+const serializedConfigProperties = localStorage.getItem('configProperties');
+if (serializedConfigProperties) {
+  configProperties = JSON.parse(serializedConfigProperties);
+}
+
 async function handleMessage(msg: OutboundMessage): Promise<void> {
   switch (msg.type) {
     case 'ready': {
@@ -64,7 +68,7 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
       const out: StateMessage = {
         type: 'state',
         buildRunning: false,
-        configProperties: {},
+        configProperties,
         currentUnit: null,
         leftObject: null,
         rightObject: null,
@@ -128,6 +132,20 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
       sendMessage(out);
       break;
     }
+    case 'setConfigProperty': {
+      if (msg.value === undefined) {
+        configProperties = { ...configProperties };
+        delete configProperties[msg.id];
+      } else {
+        configProperties = { ...configProperties, [msg.id]: msg.value };
+      }
+      localStorage.setItem(
+        'configProperties',
+        JSON.stringify(configProperties),
+      );
+      sendMessage({ type: 'state', configProperties });
+      break;
+    }
     default: {
       console.warn('Unhandled message', msg);
     }
@@ -136,7 +154,11 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
 
 export const mockVsCode: MyWebviewApi<AppStateSerialized> = {
   postMessage: (msg) => {
-    handleMessage(msg);
+    if (window.parent === window || msg.type === 'setConfigProperty') {
+      handleMessage(msg);
+    } else {
+      window.parent.postMessage(msg, '*');
+    }
   },
   getState: () => state,
   setState: (newState) => {

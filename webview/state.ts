@@ -13,12 +13,12 @@ import type {
   StateMessage,
 } from '../shared/messages';
 import type { InboundMessage, OutboundMessage } from '../shared/messages';
+import { mockVsCode } from './mock';
 import {
   type HighlightState,
   deserializeHighlightState,
   serializeHighlightState,
-} from './highlight';
-import { mockVsCode } from './mock';
+} from './util/highlight';
 
 export type SymbolRefByName = {
   symbolName: string;
@@ -213,7 +213,7 @@ export type AppStateSerialized = JSONCompatible<AppState> & {
   highlight: ReturnType<typeof serializeHighlightState>;
 };
 let vsCode: MyWebviewApi<AppStateSerialized>;
-let inVsCode = false;
+export let inVsCode = false;
 if (typeof acquireVsCodeApi === 'function') {
   vsCode = acquireVsCodeApi<AppStateSerialized>();
   inVsCode = true;
@@ -364,6 +364,31 @@ window.addEventListener('message', (event) => {
       }
     }
     useExtensionStore.setState(newState);
+  } else if (message.type === 'theme') {
+    if (message.isDark) {
+      document.body.classList.remove('decomp-me-light');
+      document.body.classList.add('decomp-me-dark');
+    } else {
+      document.body.classList.remove('decomp-me-dark');
+      document.body.classList.add('decomp-me-light');
+    }
+    document.body.style.setProperty('--background', message.colors.background);
+    if (message.codeFont) {
+      document.body.style.setProperty(
+        '--code-font-family',
+        `${message.codeFont}, monospace`,
+      );
+    } else {
+      document.body.style.removeProperty('--code-font-family');
+    }
+    if (message.codeFontSize) {
+      document.body.style.setProperty(
+        '--code-font-size',
+        `${message.codeFontSize}px`,
+      );
+    } else {
+      document.body.style.removeProperty('--code-font-size');
+    }
   } else if (inVsCode) {
     console.error('Unknown message', message);
   }

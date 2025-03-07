@@ -6,22 +6,25 @@
   "version": "0.1.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/encounter/objdiff-code"
+    "url": "https://github.com/encounter/objdiff-web"
   },
   "license": "MIT",
   "scripts": {
-    "build": "rsbuild build",
-    "watch": "rsbuild build -w --env-mode watch",
-    "dev": "rsbuild dev --env-mode dev",
     "check": "biome check --write",
-    "format": "biome format --write"
+    "format": "biome format --write",
+    "web:build": "rsbuild build",
+    "web:dev": "rsbuild dev",
+    "extension:build": "rsbuild build --env-mode extension",
+    "extension:dev": "rsbuild build -w -m development --env-mode extension",
+    "extension:package": "pnpm run extension:build && vsce package --no-dependencies",
+    "extension:publish": "pnpm run extension:build && vsce publish --no-dependencies"
   },
   "dependencies": {
     "@protobuf-ts/runtime": "^2.9.4",
     "@vscode/codicons": "^0.0.36",
     "clsx": "^2.1.1",
     "memoize-one": "^6.0.0",
-    "objdiff-wasm": "^3.0.0-alpha.1",
+    "objdiff-wasm": "3.0.0-beta.1",
     "picomatch": "^4.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -46,22 +49,18 @@
     "@types/vscode-webview": "^1.57.5",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
+    "@vscode/vsce": "^3.2.2",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"
   },
   "main": "./dist/extension.js",
+  "files": ["LICENSE", "README.md", "package.json", "dist", "media"],
   "engines": {
     "vscode": "^1.96.0"
   },
-  "browserslist": [
-    "chrome 128"
-  ],
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onWebviewPanel:objdiff"
-  ],
+  "browserslist": ["chrome 128"],
+  "categories": ["Other"],
+  "activationEvents": ["onWebviewPanel:objdiff"],
   "contributes": {
     "commands": [
       {
@@ -103,24 +102,14 @@
             "type": "string",
             "description": "How relocation targets will be diffed in the function view.",
             "default": "name_address",
-            "enum": [
-              "none",
-              "name_address",
-              "data_value",
-              "all"
-            ],
+            "enum": ["none", "name_address", "data_value", "all"],
             "enumItemLabels": [
               "None",
               "Name or address",
               "Data value",
               "Name or address, data value"
             ],
-            "enumDescriptions": [
-              null,
-              null,
-              null,
-              null
-            ]
+            "enumDescriptions": [null, null, null, null]
           },
           "objdiff.spaceBetweenArgs": {
             "type": "boolean",
@@ -146,24 +135,14 @@
             "type": "string",
             "description": "ARM architecture version to use for disassembly.",
             "default": "auto",
-            "enum": [
-              "auto",
-              "v4t",
-              "v5te",
-              "v6k"
-            ],
+            "enum": ["auto", "v4t", "v5te", "v6k"],
             "enumItemLabels": [
               "Auto",
               "ARMv4T (GBA)",
               "ARMv5TE (DS)",
               "ARMv6K (3DS)"
             ],
-            "enumDescriptions": [
-              null,
-              null,
-              null,
-              null
-            ]
+            "enumDescriptions": [null, null, null, null]
           },
           "objdiff.arm.unifiedSyntax": {
             "type": "boolean",
@@ -178,11 +157,7 @@
           "objdiff.arm.r9Usage": {
             "type": "string",
             "default": "generalPurpose",
-            "enum": [
-              "generalPurpose",
-              "sb",
-              "tr"
-            ],
+            "enum": ["generalPurpose", "sb", "tr"],
             "enumItemLabels": [
               "R9 or V6",
               "SB (static base)",
@@ -218,24 +193,9 @@
             "type": "string",
             "description": "MIPS ABI to use for disassembly.",
             "default": "auto",
-            "enum": [
-              "auto",
-              "o32",
-              "n32",
-              "n64"
-            ],
-            "enumItemLabels": [
-              "Auto",
-              "O32",
-              "N32",
-              "N64"
-            ],
-            "enumDescriptions": [
-              null,
-              null,
-              null,
-              null
-            ]
+            "enum": ["auto", "o32", "n32", "n64"],
+            "enumItemLabels": ["Auto", "O32", "N32", "N64"],
+            "enumDescriptions": [null, null, null, null]
           },
           "objdiff.mips.instrCategory": {
             "type": "string",
@@ -257,14 +217,7 @@
               "R4000 ALLEGREX (PSP)",
               "R5900 EE (PS2)"
             ],
-            "enumDescriptions": [
-              null,
-              null,
-              null,
-              null,
-              null,
-              null
-            ]
+            "enumDescriptions": [null, null, null, null, null, null]
           }
         }
       },
@@ -275,24 +228,9 @@
             "type": "string",
             "description": "x86 disassembly syntax.",
             "default": "intel",
-            "enum": [
-              "intel",
-              "gas",
-              "nasm",
-              "masm"
-            ],
-            "enumItemLabels": [
-              "Intel",
-              "AT&T",
-              "NASM",
-              "MASM"
-            ],
-            "enumDescriptions": [
-              null,
-              null,
-              null,
-              null
-            ]
+            "enum": ["intel", "gas", "nasm", "masm"],
+            "enumItemLabels": ["Intel", "AT&T", "NASM", "MASM"],
+            "enumDescriptions": [null, null, null, null]
           }
         }
       }
@@ -340,10 +278,6 @@
     ]
   },
   "pnpm": {
-    "onlyBuiltDependencies": [
-      "@biomejs/biome",
-      "core-js",
-      "esbuild"
-    ]
+    "onlyBuiltDependencies": ["@biomejs/biome", "core-js", "esbuild"]
   }
 }

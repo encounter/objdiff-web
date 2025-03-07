@@ -3,7 +3,6 @@
 :root {
   --code-font-family: var(
     --vscode-editor-font-family,
-    JetBrainsMono Nerd Font,
     JetBrains Mono,
     Consolas,
     "Courier New",
@@ -22,54 +21,87 @@
   --ui-font-weight: var(--vscode-font-weight, normal);
   --ui-font-size: var(--vscode-font-size, 13px);
 
-  --color-green: #00ff00;
-  --color-red: #f85149;
-  --color-blue: #add8e6;
-  --color-muted: var(--vscode-disabledForeground, rgba(204, 204, 204, 0.5));
+  --color-green: light-dark(#00c300, #00ff00);
+  --color-red: light-dark(#c80a00, #f85149);
+  --color-blue: light-dark(#006d90, #add8e6);
+  --color-muted: var(
+    --vscode-disabledForeground,
+    light-dark(rgba(97, 97, 97, 0.5), rgba(204, 204, 204, 0.5))
+  );
   --color-bright: light-dark(black, white);
 
-  --panel-background: var(--vscode-panel-background, #181818);
-  --panel-separator: var(--vscode-menu-separatorBackground, #454545);
+  --panel-background: var(
+    --vscode-panel-background,
+    light-dark(#f8f8f8, #181818)
+  );
+  --panel-separator: var(
+    --vscode-menu-separatorBackground,
+    light-dark(#d4d4d4, #454545)
+  );
 
-  --foreground: var(--vscode-foreground, #ccc);
-  --background: var(--vscode-editor-background, #1f1f1f);
+  --foreground: var(--vscode-foreground, light-dark(#3b3b3b, #ccc));
+  --background: var(--vscode-editor-background, light-dark(#fff, #1f1f1f));
 
   --list-row-height: calc(var(--code-font-size) * 1.33);
-  --list-row-hover-background: var(--vscode-list-hoverBackground, #2a2d2e);
+  --list-row-hover-background: var(
+    --vscode-list-hoverBackground,
+    light-dark(#f2f2f2, #2a2d2e)
+  );
 
   --line-number-foreground: var(--vscode-editorLineNumber-foreground, #6e7681);
 
-  --button-background-color: var(--vscode-button-secondaryBackground, #313131);
-  --button-foreground-color: var(--vscode-button-secondaryForeground, #ccc);
-  --button-border-color: var(--vscode-button-border, rgba(255, 255, 255, 0.07));
+  --button-background-color: var(
+    --vscode-button-secondaryBackground,
+    light-dark(#e5e5e5, #313131)
+  );
+  --button-foreground-color: var(
+    --vscode-button-secondaryForeground,
+    light-dark(#3b3b3b, #ccc)
+  );
+  --button-border-color: var(
+    --vscode-button-border,
+    light-dark(rgba(0, 0, 0, 0.1), rgba(255, 255, 255, 0.07))
+  );
   --button-hover-background-color: var(
     --vscode-button-secondaryHoverBackground,
-    #3c3c3c
+    light-dark(#cccccc, #3c3c3c)
   );
   --button-active-background-color: var(
     --vscode-toolbar-activeBackground,
-    rgba(99, 102, 103, 0.31)
+    light-dark(rgba(166, 166, 166, 0.31), rgba(99, 102, 103, 0.31))
   );
   --button-disabled-foreground-color: var(
     --vscode-disabledForeground,
-    rgba(204, 204, 204, 0.5)
+    light-dark(rgba(97, 97, 97, 0.5), rgba(204, 204, 204, 0.5))
   );
-  --focus-border-color: var(--vscode-focusBorder, #0078d4);
+  --focus-border-color: var(--vscode-focusBorder, light-dark(#005fb8, #0078d4));
 
-  --input-background-color: var(--vscode-input-background, #313131);
-  --input-foreground-color: var(--vscode-input-foreground, #ccc);
-  --input-border-color: var(--vscode-input-border, #3c3c3c);
+  --input-background-color: var(
+    --vscode-input-background,
+    light-dark(#fff, #313131)
+  );
+  --input-foreground-color: var(
+    --vscode-input-foreground,
+    light-dark(#3b3b3b, #ccc)
+  );
+  --input-border-color: var(--vscode-input-border, light-dark(#cecece, #3c3c3c));
   --input-placeholder-foreground-color: var(
     --vscode-input-placeholderForeground,
-    #989898
+    light-dark(#767676, #989898)
   );
 
   --checkbox-background-color: var(
     --vscode-settings-checkboxBackground,
-    #313131
+    light-dark(#f8f8f8, #313131)
   );
-  --checkbox-foreground-color: var(--vscode-settings-checkboxForeground, #ccc);
-  --checkbox-border-color: var(--vscode-settings-checkboxBorder, #3c3c3c);
+  --checkbox-foreground-color: var(
+    --vscode-settings-checkboxForeground,
+    light-dark(#3b3b3b, #ccc)
+  );
+  --checkbox-border-color: var(
+    --vscode-settings-checkboxBorder,
+    light-dark(#cecece, #3c3c3c)
+  );
 
   color-scheme: light dark;
 
@@ -83,7 +115,7 @@
 body {
   margin: 0;
   padding: 0;
-  min-height: 100vh;
+  height: 100vh;
   color: var(--foreground);
   font-family: var(--ui-font-family);
   font-weight: var(--ui-font-weight);
@@ -99,12 +131,45 @@ body {
   &.vscode-high-contrast-dark {
     color-scheme: dark;
   }
+
+  &.decomp-me-dark,
+  &.decomp-me-light {
+    --code-font-family: var(
+      --vscode-editor-font-family,
+      Menlo,
+      Monaco,
+      monospace
+    );
+    --ui-font-size: .8rem;
+  }
+  &.decomp-me-dark {
+    --panel-background: hsl(300deg 5% 9.5%);
+    --background: rgb(22, 22, 24);
+    --foreground: #fff9;
+    --color-bright: #f9f9f9;
+    color-scheme: dark;
+  }
+  &.decomp-me-light {
+    --code-font-family: var(
+      --vscode-editor-font-family,
+      Menlo,
+      Monaco,
+      monospace
+    );
+    --ui-font-size: .8rem;
+    --panel-background: #fdfcfd;
+    --background: #fdfcfd;
+    --foreground: rgb(51, 51, 51);
+    --color-bright: #000000e6;
+    color-scheme: light;
+  }
 }
 
 #root {
   display: flex;
   flex-flow: column;
-  min-height: 100vh;
+  height: 100%;
+  overflow: hidden;
 }
 
 .loading-root {

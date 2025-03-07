@@ -1,4 +1,4 @@
-import './wasm'; // Must come first
+import './util/wasm'; // Must come first
 
 import React from 'react';
 import ReactDOM from 'react-dom/client';

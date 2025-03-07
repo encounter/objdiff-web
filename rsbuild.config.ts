@@ -1,28 +1,38 @@
 import fs from 'node:fs';
 import type { ServerResponse } from 'node:http';
 import path from 'node:path';
-import { type RequestHandler, defineConfig } from '@rsbuild/core';
+import {
+  type RequestHandler,
+  type RsbuildConfig,
+  defineConfig,
+} from '@rsbuild/core';
 import { pluginReact } from '@rsbuild/plugin-react';
 import { pluginTypeCheck } from '@rsbuild/plugin-type-check';
 import { pluginTypedCSSModules } from '@rsbuild/plugin-typed-css-modules';
 
-const devServer = process.env.DEV_SERVER === 'true';
-
-export default defineConfig({
-  // Disable HMR and live reload. Neither the extension nor the
-  // webview can communicate with the rsbuild dev server.
+// Standalone web configuration.
+const webConfig: RsbuildConfig = {
+  source: {
+    entry: {
+      index: './webview/index.tsx',
+    },
+  },
+  html: {
+    title: 'objdiff',
+  },
+  plugins: [pluginReact(), pluginTypeCheck(), pluginTypedCSSModules()],
   dev: {
-    hmr: devServer,
-    liveReload: devServer,
     setupMiddlewares: [
       (middlewares, _server) => {
-        if (devServer) {
-          middlewares.unshift(apiMiddleware);
-        }
+        middlewares.unshift(apiMiddleware);
         return middlewares;
       },
     ],
   },
+};
+
+// VS Code extension configuration.
+const extensionConfig: RsbuildConfig = {
   environments: {
     extension: {
       source: {
@@ -52,9 +62,9 @@ export default defineConfig({
         // VS Code webviews don't have easy access to resources,
         // (especially if the extension is running on web) so we
         // simply inline everything into the HTML.
-        dataUriLimit: devServer ? undefined : 1000000000,
-        inlineScripts: !devServer,
-        inlineStyles: !devServer,
+        dataUriLimit: 1000000000,
+        inlineScripts: true,
+        inlineStyles: true,
         legalComments: 'none',
       },
       // <script defer> doesn't work with inline scripts,
@@ -66,7 +76,7 @@ export default defineConfig({
       },
       plugins: [
         pluginReact({
-          fastRefresh: devServer,
+          fastRefresh: false,
         }),
         pluginTypedCSSModules(),
       ],
@@ -76,7 +86,7 @@ export default defineConfig({
   // the webview must be self-contained files.
   performance: {
     chunkSplit: {
-      strategy: devServer ? undefined : 'all-in-one',
+      strategy: 'all-in-one',
     },
   },
   // Enable async TypeScript type checking.
@@ -87,16 +97,33 @@ export default defineConfig({
   tools: {
     rspack: {
       output: {
-        asyncChunks: devServer,
+        asyncChunks: false,
       },
     },
   },
-});
+  // Disable HMR and live reload. Neither the extension nor the
+  // webview can communicate with the rsbuild dev server.
+  dev: {
+    hmr: false,
+    liveReload: false,
+  },
+};
+
+const buildType = process.env.BUILD_TYPE;
+let config: RsbuildConfig;
+if (buildType === 'extension') {
+  config = extensionConfig;
+} else {
+  config = webConfig;
+}
+export default defineConfig(config);
 
 const PROJECT_ROOT = '../prime';
 
 // Mock API middleware for development.
 const apiMiddleware: RequestHandler = (req, res, next) => {
+  res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+  res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
   if (!req.url || !req.headers.host || req.method !== 'GET') {
     return next();
   }

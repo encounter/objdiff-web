@@ -1,4 +1,4 @@
-import headerStyles from './Header.module.css';
+import headerStyles from '../common/Header.module.css';
 import styles from './SettingsView.module.css';
 
 import { version as wasmVersion } from 'objdiff-wasm';
@@ -6,13 +6,14 @@ import {
   CONFIG_SCHEMA,
   type ConfigPropertyBoolean,
   type ConfigPropertyChoice,
-} from '../shared/config';
+} from '../../shared/config';
 import {
+  inVsCode,
   openSettings,
   setConfigProperty,
   useAppStore,
   useExtensionStore,
-} from './state';
+} from '../state';
 
 const BooleanProperty = ({
   property,
@@ -109,14 +110,18 @@ const SettingsView = () => {
         <button title="Back" onClick={() => setCurrentView('main')}>
           <span className="codicon codicon-chevron-left" />
         </button>
-        <button onClick={() => openSettings()}>Open in Editor</button>
+        {inVsCode && (
+          <button onClick={() => openSettings()}>Open in Editor</button>
+        )}
       </div>
       <div className={styles.container}>
         <h1 className={styles.header}>About</h1>
-        <p>
-          <strong>Extension version:</strong>{' '}
-          {window.webviewProps?.extensionVersion ?? 'Not available'}
-        </p>
+        {window.webviewProps?.extensionVersion && (
+          <p>
+            <strong>Extension version:</strong>{' '}
+            {window.webviewProps.extensionVersion}
+          </p>
+        )}
         <p>
           <strong>objdiff version:</strong> {wasmVersion()}
         </p>

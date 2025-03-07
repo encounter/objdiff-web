@@ -2,12 +2,12 @@ import './App.css';
 
 import type { diff, display } from 'objdiff-wasm';
 import { useShallow } from 'zustand/react/shallow';
-import FunctionView from './FunctionView';
-import SettingsView from './SettingsView';
-import SymbolsView from './SymbolsView';
-import UnitsView from './UnitsView';
 import { useAppStore, useExtensionStore } from './state';
 import type { SymbolRefByName } from './state';
+import FunctionView from './views/FunctionView';
+import SettingsView from './views/SettingsView';
+import SymbolsView from './views/SymbolsView';
+import UnitsView from './views/UnitsView';
 
 const findSymbol = (
   obj: diff.ObjectDiff | undefined,
@@ -51,19 +51,19 @@ const App = () => {
     return <div className="loading-root" />;
   }
 
-  if (result) {
-    const leftSymbol = findSymbol(result.left, leftSymbolRef);
-    const rightSymbol = findSymbol(result.right, rightSymbolRef);
-    if (leftSymbol || rightSymbol) {
-      return (
-        <FunctionView diff={result} left={leftSymbol} right={rightSymbol} />
-      );
-    }
-    return <SymbolsView diff={result} />;
-  }
-
   switch (currentView) {
     case 'main':
+      if (result) {
+        const leftSymbol = findSymbol(result.left, leftSymbolRef);
+        const rightSymbol = findSymbol(result.right, rightSymbolRef);
+        if (leftSymbol || rightSymbol) {
+          return (
+            <FunctionView diff={result} left={leftSymbol} right={rightSymbol} />
+          );
+        }
+        return <SymbolsView diff={result} />;
+      }
+
       if (buildRunning) {
         return (
           <div className="content">

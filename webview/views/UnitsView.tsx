@@ -10,15 +10,15 @@ import {
   areEqual,
 } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
-import type { ProjectConfig, Unit } from '../shared/config';
-import headerStyles from './Header.module.css';
+import type { ProjectConfig, Unit } from '../../shared/config';
+import headerStyles from '../common/Header.module.css';
 import {
   quickPickUnit,
   setCurrentUnit,
   useAppStore,
   useExtensionStore,
-} from './state';
-import { useFontSize } from './util';
+} from '../state';
+import { useFontSize } from '../util/util';
 
 type DirectoryItem = {
   type: 'directory';

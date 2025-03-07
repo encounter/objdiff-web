@@ -5,13 +5,13 @@
   "tasks": [
     {
       "type": "npm",
-      "script": "watch",
+      "script": "extension:dev",
       "group": {
         "kind": "build",
         "isDefault": true
       },
       "isBackground": true,
-      "label": "npm:watch",
+      "label": "npm:extension:dev",
       "presentation": {
         "group": "watch",
         "reveal": "never"

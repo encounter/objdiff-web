@@ -1,5 +1,5 @@
+import headerStyles from '../common/Header.module.css';
 import styles from './FunctionView.module.css';
-import headerStyles from './Header.module.css';
 
 import clsx from 'clsx';
 import memoizeOne from 'memoize-one';
@@ -9,20 +9,20 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, areEqual } from 'react-window';
 import type { ListChildComponentProps } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
-import TooltipShared from './TooltipShared';
-import {
-  type HighlightState,
-  highlightColumn,
-  highlightMatches,
-  updateHighlight,
-} from './highlight';
+import TooltipShared from '../common/TooltipShared';
 import {
   buildDiffConfig,
   runBuild,
   useAppStore,
   useExtensionStore,
-} from './state';
-import { percentClass, useFontSize } from './util';
+} from '../state';
+import {
+  type HighlightState,
+  highlightColumn,
+  highlightMatches,
+  updateHighlight,
+} from '../util/highlight';
+import { percentClass, useFontSize } from '../util/util';
 
 const ROTATION_CLASSES = [
   styles.rotation0,
@@ -285,11 +285,13 @@ const createItemData = memoizeOne(
     );
     const symbolName = leftSymbol?.name || rightSymbol?.name || '';
     const config = buildDiffConfig(null);
+    const matchPercent = rightSymbol?.matchPercent;
     return {
       itemCount,
       symbolName,
       result,
       config,
+      matchPercent,
       left,
       leftSymbol,
       right,
@@ -332,13 +334,15 @@ const FunctionView = ({
   left: display.SectionDisplaySymbol | null;
   right: display.SectionDisplaySymbol | null;
 }) => {
-  const { buildRunning, currentUnit, lastBuilt } = useExtensionStore(
-    useShallow((state) => ({
-      buildRunning: state.buildRunning,
-      currentUnit: state.currentUnit,
-      lastBuilt: state.lastBuilt,
-    })),
-  );
+  const { buildRunning, currentUnit, lastBuilt, hasProjectConfig } =
+    useExtensionStore(
+      useShallow((state) => ({
+        buildRunning: state.buildRunning,
+        currentUnit: state.currentUnit,
+        lastBuilt: state.lastBuilt,
+        hasProjectConfig: state.projectConfig != null,
+      })),
+    );
   const currentUnitName = currentUnit?.name || '';
   const { highlight, setSelectedSymbol, setSymbolScrollOffset, setHighlight } =
     useAppStore(
@@ -375,13 +379,15 @@ const FunctionView = ({
         </div>
         <div className={headerStyles.column}>
           <div className={headerStyles.row}>
-            <button
-              title="Build"
-              onClick={() => runBuild()}
-              disabled={buildRunning}
-            >
-              <span className="codicon codicon-refresh" />
-            </button>
+            {hasProjectConfig && (
+              <button
+                title="Build"
+                onClick={() => runBuild()}
+                disabled={buildRunning}
+              >
+                <span className="codicon codicon-refresh" />
+              </button>
+            )}
             {lastBuilt && (
               <span className={headerStyles.label}>
                 Last built: {new Date(lastBuilt).toLocaleTimeString('en-US')}

@@ -1,4 +1,4 @@
-import headerStyles from './Header.module.css';
+import headerStyles from '../common/Header.module.css';
 import styles from './SymbolsView.module.css';
 
 import clsx from 'clsx';
@@ -12,15 +12,15 @@ import {
   areEqual,
 } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
-import TooltipShared from './TooltipShared';
+import TooltipShared from '../common/TooltipShared';
 import {
   type UnitScrollOffsets,
   runBuild,
   setCurrentUnit,
   useAppStore,
   useExtensionStore,
-} from './state';
-import { percentClass, useFontSize } from './util';
+} from '../state';
+import { percentClass, useFontSize } from '../util/util';
 
 const SectionRow = ({
   section,
@@ -273,10 +273,11 @@ const createItemDataLeft = memoizeOne(createItemDataFn);
 const createItemDataRight = memoizeOne(createItemDataFn);
 
 const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
-  const { buildRunning, currentUnit } = useExtensionStore(
+  const { buildRunning, currentUnit, hasProjectConfig } = useExtensionStore(
     useShallow((state) => ({
       buildRunning: state.buildRunning,
       currentUnit: state.currentUnit,
+      hasProjectConfig: state.projectConfig != null,
     })),
   );
   const currentUnitName = currentUnit?.name || '';
@@ -286,6 +287,7 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
     setUnitSectionCollapsed,
     setUnitScrollOffset,
     setUnitSearch,
+    setCurrentView,
   } = useAppStore(
     useShallow((state) => {
       const unit = state.getUnitState(currentUnitName);
@@ -295,6 +297,7 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
         setUnitSectionCollapsed: state.setUnitSectionCollapsed,
         setUnitScrollOffset: state.setUnitScrollOffset,
         setUnitSearch: state.setUnitSearch,
+        setCurrentView: state.setCurrentView,
       };
     }),
   );
@@ -365,48 +368,69 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
     'right',
     setRightSectionCollapsed,
   );
+
+  const unitNameRow = (
+    <div className={headerStyles.row}>
+      <span className={clsx(headerStyles.label, headerStyles.emphasized)}>
+        {currentUnitName}
+      </span>
+    </div>
+  );
+
+  const filterRow = (
+    <div className={headerStyles.row}>
+      <input
+        type="text"
+        placeholder="Filter symbols"
+        value={search || ''}
+        onChange={(e) => {
+          const value = e.target.value;
+          setUnitSearch(currentUnitName, value);
+        }}
+      />
+    </div>
+  );
+
+  const settingsRow = (
+    <div className={headerStyles.row}>
+      <button title="Settings" onClick={() => setCurrentView('settings')}>
+        <span className="codicon codicon-settings-gear" />
+      </button>
+    </div>
+  );
+
   return (
     <>
       <div className={headerStyles.header}>
         <div className={headerStyles.column}>
           <div className={headerStyles.row}>
-            <button
-              title="Back"
-              onClick={() => setCurrentUnit(null)}
-              disabled={buildRunning}
-            >
-              <span className="codicon codicon-chevron-left" />
-            </button>
+            {hasProjectConfig ? (
+              <button
+                title="Back"
+                onClick={() => setCurrentUnit(null)}
+                disabled={buildRunning}
+              >
+                <span className="codicon codicon-chevron-left" />
+              </button>
+            ) : null}
             <span className={headerStyles.label}>Target object</span>
           </div>
-          <div className={headerStyles.row}>
-            <span className={clsx(headerStyles.label, headerStyles.emphasized)}>
-              {currentUnitName}
-            </span>
-          </div>
+          {currentUnitName ? unitNameRow : filterRow}
         </div>
         <div className={headerStyles.column}>
           <div className={headerStyles.row}>
-            <button
-              title="Build"
-              onClick={() => runBuild()}
-              disabled={buildRunning}
-            >
-              <span className="codicon codicon-refresh" />
-            </button>
+            {hasProjectConfig && (
+              <button
+                title="Build"
+                onClick={() => runBuild()}
+                disabled={buildRunning}
+              >
+                <span className="codicon codicon-refresh" />
+              </button>
+            )}
             <span className={headerStyles.label}>Base object</span>
           </div>
-          <div className={headerStyles.row}>
-            <input
-              type="text"
-              placeholder="Filter symbols"
-              value={search || ''}
-              onChange={(e) => {
-                const value = e.target.value;
-                setUnitSearch(currentUnitName, value);
-              }}
-            />
-          </div>
+          {currentUnitName ? filterRow : settingsRow}
         </div>
       </div>
       <div className={styles.symbols}>
