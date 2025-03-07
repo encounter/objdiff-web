@@ -54,13 +54,27 @@
     "typescript": "^5.7.2"
   },
   "main": "./dist/extension.js",
-  "files": ["LICENSE", "README.md", "package.json", "dist", "media"],
+  "files": [
+    "LICENSE",
+    "README.md",
+    "package.json",
+    "dist",
+    "media"
+  ],
   "engines": {
+    "node": ">=20.0.0",
     "vscode": "^1.96.0"
   },
-  "browserslist": ["chrome 128"],
-  "categories": ["Other"],
-  "activationEvents": ["onWebviewPanel:objdiff"],
+  "packageManager": "pnpm@10.6.1",
+  "browserslist": [
+    "chrome 128"
+  ],
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onWebviewPanel:objdiff"
+  ],
   "contributes": {
     "commands": [
       {
@@ -102,14 +116,24 @@
             "type": "string",
             "description": "How relocation targets will be diffed in the function view.",
             "default": "name_address",
-            "enum": ["none", "name_address", "data_value", "all"],
+            "enum": [
+              "none",
+              "name_address",
+              "data_value",
+              "all"
+            ],
             "enumItemLabels": [
               "None",
               "Name or address",
               "Data value",
               "Name or address, data value"
             ],
-            "enumDescriptions": [null, null, null, null]
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null
+            ]
           },
           "objdiff.spaceBetweenArgs": {
             "type": "boolean",
@@ -135,14 +159,24 @@
             "type": "string",
             "description": "ARM architecture version to use for disassembly.",
             "default": "auto",
-            "enum": ["auto", "v4t", "v5te", "v6k"],
+            "enum": [
+              "auto",
+              "v4t",
+              "v5te",
+              "v6k"
+            ],
             "enumItemLabels": [
               "Auto",
               "ARMv4T (GBA)",
               "ARMv5TE (DS)",
               "ARMv6K (3DS)"
             ],
-            "enumDescriptions": [null, null, null, null]
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null
+            ]
           },
           "objdiff.arm.unifiedSyntax": {
             "type": "boolean",
@@ -157,7 +191,11 @@
           "objdiff.arm.r9Usage": {
             "type": "string",
             "default": "generalPurpose",
-            "enum": ["generalPurpose", "sb", "tr"],
+            "enum": [
+              "generalPurpose",
+              "sb",
+              "tr"
+            ],
             "enumItemLabels": [
               "R9 or V6",
               "SB (static base)",
@@ -193,9 +231,24 @@
             "type": "string",
             "description": "MIPS ABI to use for disassembly.",
             "default": "auto",
-            "enum": ["auto", "o32", "n32", "n64"],
-            "enumItemLabels": ["Auto", "O32", "N32", "N64"],
-            "enumDescriptions": [null, null, null, null]
+            "enum": [
+              "auto",
+              "o32",
+              "n32",
+              "n64"
+            ],
+            "enumItemLabels": [
+              "Auto",
+              "O32",
+              "N32",
+              "N64"
+            ],
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null
+            ]
           },
           "objdiff.mips.instrCategory": {
             "type": "string",
@@ -217,7 +270,14 @@
               "R4000 ALLEGREX (PSP)",
               "R5900 EE (PS2)"
             ],
-            "enumDescriptions": [null, null, null, null, null, null]
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null,
+              null,
+              null
+            ]
           }
         }
       },
@@ -228,9 +288,24 @@
             "type": "string",
             "description": "x86 disassembly syntax.",
             "default": "intel",
-            "enum": ["intel", "gas", "nasm", "masm"],
-            "enumItemLabels": ["Intel", "AT&T", "NASM", "MASM"],
-            "enumDescriptions": [null, null, null, null]
+            "enum": [
+              "intel",
+              "gas",
+              "nasm",
+              "masm"
+            ],
+            "enumItemLabels": [
+              "Intel",
+              "AT&T",
+              "NASM",
+              "MASM"
+            ],
+            "enumDescriptions": [
+              null,
+              null,
+              null,
+              null
+            ]
           }
         }
       }
@@ -278,6 +353,12 @@
     ]
   },
   "pnpm": {
-    "onlyBuiltDependencies": ["@biomejs/biome", "core-js", "esbuild"]
+    "onlyBuiltDependencies": [
+      "@biomejs/biome",
+      "@vscode/vsce-sign",
+      "core-js",
+      "esbuild",
+      "keytar"
+    ]
   }
 }
