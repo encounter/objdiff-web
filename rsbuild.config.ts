@@ -18,6 +18,7 @@ const webConfig: RsbuildConfig = {
     },
   },
   html: {
+    scriptLoading: 'module',
     title: 'objdiff',
   },
   plugins: [pluginReact(), pluginTypeCheck(), pluginTypedCSSModules()],
@@ -67,11 +68,8 @@ const extensionConfig: RsbuildConfig = {
         inlineStyles: true,
         legalComments: 'none',
       },
-      // <script defer> doesn't work with inline scripts,
-      // so we need to move the scripts to the body.
       html: {
-        inject: 'body',
-        scriptLoading: 'blocking',
+        scriptLoading: 'module',
         title: 'objdiff',
       },
       plugins: [
@@ -129,8 +127,10 @@ const PROJECT_ROOT = '../prime';
 
 // Mock API middleware for development.
 const apiMiddleware: RequestHandler = (req, res, next) => {
+  // Permit cross-origin embedding for decomp.me.
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+
   if (!req.url || !req.headers.host || req.method !== 'GET') {
     return next();
   }

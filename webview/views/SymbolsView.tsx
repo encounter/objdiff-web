@@ -12,6 +12,7 @@ import {
   areEqual,
 } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
+import { createContextMenu, renderContextItems } from '../common/ContextMenu';
 import TooltipShared from '../common/TooltipShared';
 import {
   type UnitScrollOffsets,
@@ -21,6 +22,14 @@ import {
   useExtensionStore,
 } from '../state';
 import { percentClass, useFontSize } from '../util/util';
+
+type SymbolTooltipContent = {
+  symbolRef: display.SectionDisplaySymbol;
+  side: keyof UnitScrollOffsets;
+};
+
+const { ContextMenuProvider, useContextMenu } =
+  createContextMenu<SymbolTooltipContent>();
 
 const SectionRow = ({
   section,
@@ -70,6 +79,7 @@ const SymbolRow = ({
   style?: React.CSSProperties;
 }) => {
   const setSelectedSymbol = useAppStore((state) => state.setSelectedSymbol);
+  const onContextMenu = useContextMenu();
   const symbol = display.displaySymbol(obj, symbolRef);
   const flags = [];
   if (symbol.flags.global) {
@@ -136,14 +146,11 @@ const SymbolRow = ({
           },
         );
       }}
-      data-vscode-context={JSON.stringify({
-        contextType: 'symbol',
-        preventDefaultContextMenuItems: true,
-        symbolName: symbol.name,
-        symbolDemangledName: symbol.demangledName,
-      })}
       data-tooltip-id="symbol-tooltip"
       data-tooltip-content={JSON.stringify(tooltipContent)}
+      onContextMenu={(e) => {
+        onContextMenu(e, tooltipContent);
+      }}
     >
       {flagsElem}
       {percentElem}
@@ -152,11 +159,6 @@ const SymbolRow = ({
       </span>
     </div>
   );
-};
-
-type SymbolTooltipContent = {
-  symbolRef: display.SectionDisplaySymbol;
-  side: keyof UnitScrollOffsets;
 };
 
 type SectionData = display.SectionDisplay & { collapsed: boolean };
@@ -434,14 +436,35 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
         </div>
       </div>
       <div className={styles.symbols}>
-        <AutoSizer className={styles.symbols}>
-          {({ height, width }) => (
-            <>
-              {renderList(height, width, leftItemData, 'left')}
-              {renderList(height, width, rightItemData, 'right')}
-            </>
-          )}
-        </AutoSizer>
+        <ContextMenuProvider
+          render={({ data }, close) => {
+            let obj: diff.ObjectDiff | undefined;
+            switch (data.side) {
+              case 'left':
+                obj = diff.left;
+                break;
+              case 'right':
+                obj = diff.right;
+                break;
+              default:
+                break;
+            }
+            if (!obj) {
+              return null;
+            }
+            const items = display.symbolContext(obj, data.symbolRef);
+            return renderContextItems(items, close);
+          }}
+        >
+          <AutoSizer className={styles.symbols}>
+            {({ height, width }) => (
+              <>
+                {renderList(height, width, leftItemData, 'left')}
+                {renderList(height, width, rightItemData, 'right')}
+              </>
+            )}
+          </AutoSizer>
+        </ContextMenuProvider>
       </div>
       <TooltipShared
         id="symbol-tooltip"

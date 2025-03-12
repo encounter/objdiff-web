@@ -20,11 +20,10 @@
     "extension:publish": "pnpm run extension:build && vsce publish --no-dependencies"
   },
   "dependencies": {
-    "@protobuf-ts/runtime": "^2.9.4",
     "@vscode/codicons": "^0.0.36",
     "clsx": "^2.1.1",
     "memoize-one": "^6.0.0",
-    "objdiff-wasm": "3.0.0-beta.1",
+    "objdiff-wasm": "3.0.0-beta.3",
     "picomatch": "^4.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

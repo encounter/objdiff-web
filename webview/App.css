@@ -103,6 +103,24 @@
     light-dark(#cecece, #3c3c3c)
   );
 
+  --menu-border: var(--vscode-menu-border, light-dark(#cecece, #454545));
+  --menu-foreground: var(--vscode-menu-foreground, light-dark(#3b3b3b, #ccc));
+  --menu-background: var(--vscode-menu-background, light-dark(#fff, #1f1f1f));
+  --menu-selection-foreground: var(--vscode-menu-selectionForeground, #fff);
+  --menu-selection-background: var(
+    --vscode-menu-selectionBackground,
+    light-dark(#005fb8, #0078d4)
+  );
+  --menu-separator-background: var(
+    --vscode-menu-separatorBackground,
+    light-dark(#d4d4d4, #454545)
+  );
+
+  --widget-shadow: var(
+    --vscode-widget-shadow,
+    light-dark(rgba(0, 0, 0, 0.16), rgba(0, 0, 0, 0.36))
+  );
+
   color-scheme: light dark;
 
   font-synthesis: none;

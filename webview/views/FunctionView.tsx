@@ -9,6 +9,7 @@ import AutoSizer from 'react-virtualized-auto-sizer';
 import { FixedSizeList, areEqual } from 'react-window';
 import type { ListChildComponentProps } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
+import { createContextMenu, renderContextItems } from '../common/ContextMenu';
 import TooltipShared from '../common/TooltipShared';
 import {
   buildDiffConfig,
@@ -36,6 +37,11 @@ const ROTATION_CLASSES = [
   styles.rotation8,
 ];
 
+const { ContextMenuProvider, useContextMenu } = createContextMenu<{
+  column: number;
+  row: number;
+}>();
+
 const AsmCell = ({
   obj,
   config,
@@ -53,6 +59,7 @@ const AsmCell = ({
   highlight: HighlightState;
   setHighlight: (highlight: HighlightState) => void;
 }) => {
+  const onContextMenu = useContextMenu();
   if (!obj || !symbol) {
     return <div className={styles.instructionCell} />;
   }
@@ -197,6 +204,7 @@ const AsmCell = ({
       className={clsx(classes)}
       data-tooltip-id="instruction-tooltip"
       data-tooltip-content={JSON.stringify(tooltipContent)}
+      onContextMenu={(e) => onContextMenu(e, { column, row })}
     >
       {out}
     </div>
@@ -413,28 +421,57 @@ const FunctionView = ({
         </div>
       </div>
       <div className={styles.instructionList}>
-        <AutoSizer>
-          {({ height, width }) => (
-            <FixedSizeList
-              height={height}
-              itemCount={itemData.itemCount}
-              itemSize={itemSize}
-              width={width}
-              itemData={itemData}
-              overscanCount={20}
-              onScroll={(e) => {
-                setSymbolScrollOffset(
-                  currentUnitName,
-                  itemData.symbolName,
-                  e.scrollOffset,
-                );
-              }}
-              initialScrollOffset={initialScrollOffset}
-            >
-              {AsmRow}
-            </FixedSizeList>
-          )}
-        </AutoSizer>
+        <ContextMenuProvider
+          render={({ data }, close) => {
+            let obj: diff.ObjectDiff | undefined;
+            let symbol: display.SectionDisplaySymbol | undefined;
+            switch (data.column) {
+              case 0:
+                obj = diff.left;
+                symbol = itemData.left ?? undefined;
+                break;
+              case 1:
+                obj = diff.right;
+                symbol = itemData.right ?? undefined;
+                break;
+              default:
+                break;
+            }
+            if (!obj || !symbol) {
+              return null;
+            }
+            const items = display.instructionContext(
+              obj,
+              symbol,
+              data.row,
+              itemData.config,
+            );
+            return renderContextItems(items, close);
+          }}
+        >
+          <AutoSizer>
+            {({ height, width }) => (
+              <FixedSizeList
+                height={height}
+                itemCount={itemData.itemCount}
+                itemSize={itemSize}
+                width={width}
+                itemData={itemData}
+                overscanCount={20}
+                onScroll={(e) => {
+                  setSymbolScrollOffset(
+                    currentUnitName,
+                    itemData.symbolName,
+                    e.scrollOffset,
+                  );
+                }}
+                initialScrollOffset={initialScrollOffset}
+              >
+                {AsmRow}
+              </FixedSizeList>
+            )}
+          </AutoSizer>
+        </ContextMenuProvider>
       </div>
       <TooltipShared
         id="instruction-tooltip"
