@@ -18,8 +18,8 @@ importers:
         specifier: ^6.0.0
         version: 6.0.0
       objdiff-wasm:
-        specifier: 3.0.0-beta.3
-        version: 3.0.0-beta.3
+        specifier: 3.0.0-beta.4
+        version: 3.0.0-beta.4
       picomatch:
         specifier: ^4.0.2
         version: 4.0.2
@@ -1400,8 +1400,8 @@ packages:
   nth-check@2.1.1:
     resolution: {integrity: sha512-lqjrjmaOoAnWfMmBPL+XNnynZh2+swxiX3WUE0s4yEHI6m+AwrK2UZOimIRl3X/4QctVqS8AiZjFqyOGrMXb/w==}
 
-  objdiff-wasm@3.0.0-beta.3:
-    resolution: {integrity: sha512-StNnXtstWdM8Bc2eWxTJhC/9pdQj2GZaAeL2KXASZzXvmwzGqWxaW+RbZ3z+tOfQAgOR4QUQnnjLzpXdQA/Rlw==}
+  objdiff-wasm@3.0.0-beta.4:
+    resolution: {integrity: sha512-bjHUllTQEAGAbbFPERFeIzBSYFPI1dcvA9/Y208q7motBy6tnRlLUaW7IUTo7rEvzpq8S35ztn+NGHDlnUBpSw==}
 
   object-inspect@1.13.4:
     resolution: {integrity: sha512-W67iLl4J2EXEGTbfeHCffrjDfitvLANg0UlX3wFUUSTx92KXRFegMHUVgSqE+wvhAbi4WqjGg9czysTV2Epbew==}
@@ -3221,7 +3221,7 @@ snapshots:
     dependencies:
       boolbase: 1.0.0
 
-  objdiff-wasm@3.0.0-beta.3: {}
+  objdiff-wasm@3.0.0-beta.4: {}
 
   object-inspect@1.13.4: {}
 
