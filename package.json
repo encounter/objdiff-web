@@ -3,7 +3,7 @@
   "displayName": "objdiff",
   "description": "A local diffing tool for decompilation projects",
   "publisher": "decomp-dev",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/encounter/objdiff-web"

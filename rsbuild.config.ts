@@ -47,6 +47,7 @@ const extensionConfig: RsbuildConfig = {
           root: 'dist',
         },
         externals: ['vscode'],
+        legalComments: 'none',
       },
     },
     webview: {

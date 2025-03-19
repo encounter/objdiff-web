@@ -3,9 +3,7 @@ import styles from './util.module.css';
 import { useEffect, useState } from 'react';
 
 export const getCssVariablePx = (name: string) => {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(
-    name,
-  );
+  const value = getComputedStyle(document.body).getPropertyValue(name);
   if (!value.endsWith('px')) {
     throw new Error(`Expected ${name} to be in px, got ${value}`);
   }
@@ -23,6 +21,10 @@ export const useFontSize = () => {
       setFontSize(getCssVariablePx(CSS_VAR_FONT_SIZE));
     });
     observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ['style'],
+    });
+    observer.observe(document.body, {
       attributes: true,
       attributeFilter: ['style'],
     });
