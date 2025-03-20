@@ -41,6 +41,7 @@ export type ThemeMessage = {
   colors: Colors;
   codeFont?: string;
   codeFontSize?: number;
+  fontLigatures?: boolean;
 };
 
 // extension -> webview

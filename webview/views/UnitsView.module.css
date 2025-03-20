@@ -12,9 +12,10 @@
   height: var(--list-row-height);
   padding-left: 0.5em;
 
-  font-family: var(--code-font-family, monospace);
-  font-weight: var(--code-font-weight, normal);
+  font-family: var(--code-font-family);
+  font-weight: var(--code-font-weight);
   font-size: var(--code-font-size);
+  font-variant-ligatures: var(--code-font-variant-ligatures);
   text-wrap: nowrap;
   white-space: pre;
 

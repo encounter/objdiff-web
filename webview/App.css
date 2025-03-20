@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,100..800;1,100..800&display=swap");
 @import url("@vscode/codicons/dist/codicon.css");
 
 :root {
@@ -10,6 +11,7 @@
   );
   --code-font-weight: var(--vscode-editor-font-weight, normal);
   --code-font-size: var(--vscode-editor-font-size, 14px);
+  --code-font-variant-ligatures: contextual;
 
   --ui-font-family: var(
     --vscode-font-family,
@@ -152,12 +154,7 @@ body {
 
   &.decomp-me-dark,
   &.decomp-me-light {
-    --code-font-family: var(
-      --vscode-editor-font-family,
-      Menlo,
-      Monaco,
-      monospace
-    );
+    --code-font-family: var(Jetbrains Mono, Menlo, Monaco, monospace);
     --ui-font-size: .8rem;
   }
   &.decomp-me-dark {
@@ -168,12 +165,7 @@ body {
     color-scheme: dark;
   }
   &.decomp-me-light {
-    --code-font-family: var(
-      --vscode-editor-font-family,
-      Menlo,
-      Monaco,
-      monospace
-    );
+    --code-font-family: var(Jetbrains Mono, Menlo, Monaco, monospace);
     --ui-font-size: .8rem;
     --panel-background: #fdfcfd;
     --background: #fdfcfd;

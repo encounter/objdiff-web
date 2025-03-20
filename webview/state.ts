@@ -389,6 +389,12 @@ window.addEventListener('message', (event) => {
     } else {
       document.body.style.removeProperty('--code-font-size');
     }
+    if (message.fontLigatures != null) {
+      document.body.style.setProperty(
+        '--code-font-variant-ligatures',
+        message.fontLigatures ? 'contextual' : 'no-contextual',
+      );
+    }
   } else if (inVsCode) {
     console.error('Unknown message', message);
   }
