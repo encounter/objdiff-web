@@ -1,5 +1,7 @@
 import { diff } from 'objdiff-wasm';
+import { subscribeWithSelector } from 'zustand/middleware';
 import { create } from 'zustand/react';
+import { shallow } from 'zustand/shallow';
 import {
   type ConfigProperties,
   type ConfigPropertyValue,
@@ -7,11 +9,7 @@ import {
   type Unit,
   getModifiedConfigProperties,
 } from '../shared/config';
-import type {
-  BuildStatus,
-  SetCurrentUnitMessage,
-  StateMessage,
-} from '../shared/messages';
+import type { BuildStatus, SetCurrentUnitMessage } from '../shared/messages';
 import type { InboundMessage, OutboundMessage } from '../shared/messages';
 import { mockVsCode } from './mock';
 import {
@@ -19,6 +17,16 @@ import {
   deserializeHighlightState,
   serializeHighlightState,
 } from './util/highlight';
+
+// Callbacks for hot module replacement (HMR)
+const subscriptions: (() => void)[] = [];
+if (module.hot) {
+  module.hot.addDisposeHandler(() => {
+    for (const d of subscriptions) {
+      d();
+    }
+  });
+}
 
 export type SymbolRefByName = {
   symbolName: string;
@@ -176,21 +184,33 @@ export type ExtensionState = {
   lastBuilt: number | null;
   projectConfig: ProjectConfig | null;
   ready: boolean;
+
+  setResult: (result: diff.DiffResult | null | undefined) => void;
 };
-export const useExtensionStore = create<ExtensionState>(() => ({
-  buildRunning: false,
-  configProperties: {},
-  currentUnit: null,
-  currentView: 'main',
-  leftStatus: null,
-  rightStatus: null,
-  leftObject: null,
-  rightObject: null,
-  result: null,
-  lastBuilt: null,
-  projectConfig: null,
-  ready: false,
-}));
+export const useExtensionStore = create(
+  subscribeWithSelector<ExtensionState>((set) => ({
+    buildRunning: false,
+    configProperties: {},
+    currentUnit: null,
+    currentView: 'main',
+    leftStatus: null,
+    rightStatus: null,
+    leftObject: null,
+    rightObject: null,
+    result: null,
+    lastBuilt: null,
+    projectConfig: null,
+    ready: false,
+
+    setResult: (result: diff.DiffResult | null | undefined) => {
+      if (result === undefined) {
+        set({ lastBuilt: Date.now() });
+      } else {
+        set({ result, lastBuilt: Date.now() });
+      }
+    },
+  })),
+);
 
 // Copy of vscode.WebviewApi with concrete message types
 export interface MyWebviewApi<StateType> {
@@ -220,6 +240,9 @@ if (typeof acquireVsCodeApi === 'function') {
 } else {
   vsCode = mockVsCode;
 }
+export { vsCode as vscode };
+
+// Restore serialized state
 const storedState = vsCode.getState();
 if (storedState) {
   useAppStore.setState({
@@ -227,39 +250,47 @@ if (storedState) {
     highlight: deserializeHighlightState(storedState.highlight),
   });
 }
+
+// Serialize state on changes
 let timeoutId: ReturnType<typeof setTimeout> | undefined;
-useAppStore.subscribe((state) => {
-  // Debounce state updates
+subscriptions.push(
+  useAppStore.subscribe((state) => {
+    // Debounce state updates
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+    timeoutId = setTimeout(() => {
+      const serialized: Partial<AppStateSerialized> = {};
+      for (const key in state) {
+        const k = key as keyof AppState;
+        if (k === 'highlight') {
+          serialized.highlight = serializeHighlightState(state.highlight);
+        } else if (
+          k !== 'getUnitState' &&
+          k !== 'setSelectedSymbol' &&
+          k !== 'setSymbolScrollOffset' &&
+          k !== 'setUnitScrollOffset' &&
+          k !== 'setUnitSectionCollapsed' &&
+          k !== 'setUnitSearch' &&
+          k !== 'setUnitsScrollOffset' &&
+          k !== 'setHighlight' &&
+          k !== 'setCurrentView' &&
+          k !== 'setCollapsedUnit'
+        ) {
+          serialized[k] = state[k] as any;
+        }
+      }
+      vsCode.setState(serialized as AppStateSerialized);
+      timeoutId = undefined;
+    }, 100);
+  }),
+);
+subscriptions.push(() => {
   if (timeoutId) {
     clearTimeout(timeoutId);
-  }
-  timeoutId = setTimeout(() => {
-    const serialized: Partial<AppStateSerialized> = {};
-    for (const key in state) {
-      const k = key as keyof AppState;
-      if (k === 'highlight') {
-        serialized.highlight = serializeHighlightState(state.highlight);
-      } else if (
-        k !== 'getUnitState' &&
-        k !== 'setSelectedSymbol' &&
-        k !== 'setSymbolScrollOffset' &&
-        k !== 'setUnitScrollOffset' &&
-        k !== 'setUnitSectionCollapsed' &&
-        k !== 'setUnitSearch' &&
-        k !== 'setUnitsScrollOffset' &&
-        k !== 'setHighlight' &&
-        k !== 'setCurrentView' &&
-        k !== 'setCollapsedUnit'
-      ) {
-        serialized[k] = state[k] as any;
-      }
-    }
-    vsCode.setState(serialized as AppStateSerialized);
     timeoutId = undefined;
-  }, 100);
+  }
 });
-vsCode.postMessage({ type: 'ready' });
-export { vsCode as vscode };
 
 export function runBuild(): void {
   vsCode.postMessage({ type: 'runTask', taskType: 'build' });
@@ -284,10 +315,12 @@ export function openSettings(): void {
   vsCode.postMessage({ type: 'openSettings' });
 }
 
-export function buildDiffConfig(msg: StateMessage | null): diff.DiffConfig {
+export function buildDiffConfig(
+  configProperties: ConfigProperties | null | undefined,
+): diff.DiffConfig {
   const config = new diff.DiffConfig();
   const props = getModifiedConfigProperties(
-    msg?.configProperties ?? useExtensionStore.getState().configProperties,
+    configProperties ?? useExtensionStore.getState().configProperties,
   );
   for (const key in props) {
     if (props[key] != null) {
@@ -297,7 +330,50 @@ export function buildDiffConfig(msg: StateMessage | null): diff.DiffConfig {
   return config;
 }
 
-window.addEventListener('message', (event) => {
+// Run diff when objects or config properties change
+subscriptions.push(
+  useExtensionStore.subscribe(
+    (state) => ({
+      leftObject: state.leftObject,
+      rightObject: state.rightObject,
+      configProperties: state.configProperties,
+      setResult: state.setResult,
+    }),
+    (
+      { leftObject, rightObject, configProperties, setResult },
+      {
+        leftObject: prevLeftObject,
+        rightObject: prevRightObject,
+        configProperties: prevConfigProperties,
+      },
+    ) => {
+      if (leftObject == null && rightObject == null) {
+        setResult(null);
+      } else if (
+        configProperties === prevConfigProperties &&
+        leftObject?.hash() === prevLeftObject?.hash() &&
+        rightObject?.hash() === prevRightObject?.hash()
+      ) {
+        // Nothing changed, but update build time
+        setResult(undefined);
+      } else {
+        const start = performance.now();
+        const diffConfig = buildDiffConfig(configProperties);
+        const result = diff.runDiff(
+          leftObject ?? undefined,
+          rightObject ?? undefined,
+          diffConfig,
+        );
+        const end = performance.now();
+        console.debug('Diff time:', end - start, 'ms');
+        setResult(result);
+      }
+    },
+    { equalityFn: shallow },
+  ),
+);
+
+const handleMessage = (event: MessageEvent) => {
   const message = event.data as InboundMessage;
   if (message.type === 'state') {
     const newState: Partial<ExtensionState> = {
@@ -313,7 +389,7 @@ window.addEventListener('message', (event) => {
         newState.leftObject = null;
       } else {
         if (diffConfig == null) {
-          diffConfig = buildDiffConfig(message);
+          diffConfig = buildDiffConfig(message.configProperties);
         }
         newState.leftObject = diff.Object.parse(
           new Uint8Array(message.leftObject),
@@ -326,36 +402,13 @@ window.addEventListener('message', (event) => {
         newState.rightObject = null;
       } else {
         if (diffConfig == null) {
-          diffConfig = buildDiffConfig(message);
+          diffConfig = buildDiffConfig(message.configProperties);
         }
         newState.rightObject = diff.Object.parse(
           new Uint8Array(message.rightObject),
           diffConfig,
         );
       }
-    }
-    if (
-      newState.leftObject !== undefined ||
-      newState.rightObject !== undefined
-    ) {
-      if (newState.leftObject == null && newState.rightObject == null) {
-        newState.result = null;
-      } else {
-        const start = performance.now();
-        if (diffConfig == null) {
-          diffConfig = buildDiffConfig(message);
-        }
-        newState.result = diff.runDiff(
-          newState.leftObject ?? undefined,
-          newState.rightObject ?? undefined,
-          diffConfig,
-        );
-        const end = performance.now();
-        console.debug('Diff time:', end - start, 'ms');
-      }
-    }
-    if (newState.result) {
-      newState.lastBuilt = Date.now();
     }
     for (const k in newState) {
       const key = k as keyof typeof newState;
@@ -398,36 +451,8 @@ window.addEventListener('message', (event) => {
   } else if (inVsCode) {
     console.error('Unknown message', message);
   }
-});
+};
+window.addEventListener('message', handleMessage);
+subscriptions.push(() => window.removeEventListener('message', handleMessage));
 
-// const lineRanges = [];
-// for (const section of diff.right?.sections || []) {
-//   for (const diff of section.symbols) {
-//     let currentRange: { start: number; end: number } | null = null;
-//     for (const ins of diff.instructions) {
-//       let lineNumber = ins.instruction?.line_number;
-//       if (lineNumber == null) {
-//         continue;
-//       }
-//       lineNumber = lineNumber - 1;
-//       if (ins.diff_kind !== DiffKind.DIFF_NONE) {
-//         if (currentRange !== null) {
-//           currentRange.end = lineNumber;
-//         } else {
-//           currentRange = {
-//             start: lineNumber,
-//             end: lineNumber,
-//           };
-//         }
-//       } else if (currentRange !== null && lineNumber > currentRange.end) {
-//         lineRanges.push(currentRange);
-//         currentRange = null;
-//       }
-//     }
-//     if (currentRange !== null) {
-//       lineRanges.push(currentRange);
-//     }
-//   }
-// }
-// console.log('lineRanges', lineRanges);
-// vscode.postMessage({ type: 'lineRanges', data: lineRanges });
+vsCode.postMessage({ type: 'ready' });
