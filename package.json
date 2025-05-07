@@ -23,7 +23,7 @@
     "@vscode/codicons": "^0.0.36",
     "clsx": "^2.1.1",
     "memoize-one": "^6.0.0",
-    "objdiff-wasm": "3.0.0-beta.5",
+    "objdiff-wasm": "3.0.0-beta.6",
     "picomatch": "^4.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -358,6 +358,7 @@
       "core-js",
       "esbuild",
       "keytar"
-    ]
+    ],
+    "overrides": {}
   }
 }
