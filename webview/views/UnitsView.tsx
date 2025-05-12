@@ -2,7 +2,7 @@ import styles from './UnitsView.module.css';
 
 import clsx from 'clsx';
 import memoizeOne from 'memoize-one';
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import {
   FixedSizeList,
@@ -26,6 +26,7 @@ type DirectoryItem = {
   label: string;
   id: string;
   collapsed: boolean;
+  path: string[];
 };
 
 type UnitItem = {
@@ -34,6 +35,7 @@ type UnitItem = {
   label: string;
   id: string;
   unit: Unit;
+  path: string[];
 };
 
 type Item = DirectoryItem | UnitItem;
@@ -41,10 +43,16 @@ type Item = DirectoryItem | UnitItem;
 type ItemData = {
   unitsCount: number;
   items: Item[];
+  highlightedPath: string | null;
+  setHighlightedPath: (id: string | null) => void;
 };
 
 const UnitRow = memo(
-  ({ index, style, data: { items } }: ListChildComponentProps<ItemData>) => {
+  ({
+    index,
+    style,
+    data: { items, highlightedPath, setHighlightedPath },
+  }: ListChildComponentProps<ItemData>) => {
     const setCollapsedUnit = useAppStore((state) => state.setCollapsedUnit);
     const item = items[index];
     const classes = [styles.row];
@@ -65,7 +73,15 @@ const UnitRow = memo(
     }
     const indentItems = [];
     for (let i = 0; i < item.indent; i++) {
-      indentItems.push(<span key={i} className={styles.indent} />);
+      indentItems.push(
+        <span
+          key={i}
+          className={clsx(
+            styles.indent,
+            item.path[i] === highlightedPath && styles.indentHighlighted,
+          )}
+        />,
+      );
     }
     if (item.type === 'directory') {
       indentItems.push(
@@ -84,8 +100,22 @@ const UnitRow = memo(
         className={clsx(classes)}
         style={style}
         onClick={() => {
-          if (item.type === 'unit') setCurrentUnit(item.unit);
-          else setCollapsedUnit(item.id, !item.collapsed);
+          if (item.type === 'unit') {
+            setCurrentUnit(item.unit);
+          } else {
+            const collapsed = !item.collapsed;
+            setCollapsedUnit(item.id, collapsed);
+            setHighlightedPath(
+              collapsed ? item.path[item.path.length - 1] : item.id,
+            );
+          }
+        }}
+        onMouseEnter={() => {
+          setHighlightedPath(
+            item.type === 'unit' || item.collapsed
+              ? item.path[item.path.length - 1]
+              : item.id,
+          );
         }}
       >
         {indentItems}
@@ -111,10 +141,20 @@ function pushTreeItems(item: TreeItem | UnitItem, out: Item[]) {
   }
 }
 
+const buildPath = (split: string[]) => {
+  const path = [];
+  for (let i = 0; i < split.length - 1; i++) {
+    path.push(split.slice(0, i + 1).join('/'));
+  }
+  return path;
+};
+
 const createItemData = memoizeOne(
   (
     config: ProjectConfig | null,
     collapsedUnits: Record<string, boolean>,
+    highlightedPath: string | null,
+    setHighlightedPath: (id: string | null) => void,
   ): ItemData => {
     const units = config?.units ?? [];
     const map = new Map<string, TreeItem>();
@@ -125,7 +165,8 @@ const createItemData = memoizeOne(
       let parent: TreeItem | null = null;
       for (let i = 0; i < split.length - 1; i++) {
         const name = split[i];
-        const key = split.slice(0, i + 1).join('/');
+        const dirPath = split.slice(0, i + 1);
+        const key = dirPath.join('/');
         let item = map.get(key);
         if (!item) {
           item = {
@@ -135,6 +176,7 @@ const createItemData = memoizeOne(
             id: key,
             collapsed: !!collapsedUnits[key],
             children: [],
+            path: buildPath(dirPath),
           };
           if (parent) {
             parent.children.push(item);
@@ -151,6 +193,7 @@ const createItemData = memoizeOne(
         label: split[split.length - 1],
         id: path,
         unit,
+        path: buildPath(split),
       };
       if (parent) {
         parent.children.push(unitItem);
@@ -162,7 +205,12 @@ const createItemData = memoizeOne(
     for (const item of rootItems) {
       pushTreeItems(item, items);
     }
-    return { unitsCount: units.length, items };
+    return {
+      unitsCount: units.length,
+      items,
+      highlightedPath,
+      setHighlightedPath,
+    };
   },
 );
 
@@ -180,7 +228,13 @@ const UnitsView = () => {
     [],
   );
   const itemSize = useFontSize() * 1.33;
-  const itemData = createItemData(config, collapsedUnits);
+  const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
+  const itemData = createItemData(
+    config,
+    collapsedUnits,
+    highlightedPath,
+    setHighlightedPath,
+  );
   return (
     <>
       <div className={headerStyles.header}>

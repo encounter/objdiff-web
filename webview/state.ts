@@ -391,10 +391,26 @@ const handleMessage = (event: MessageEvent) => {
         if (diffConfig == null) {
           diffConfig = buildDiffConfig(message.configProperties);
         }
-        newState.leftObject = diff.Object.parse(
-          new Uint8Array(message.leftObject),
-          diffConfig,
-        );
+        try {
+          newState.leftObject = diff.Object.parse(
+            new Uint8Array(message.leftObject),
+            diffConfig,
+          );
+          newState.leftStatus = {
+            success: true,
+            cmdline: '',
+            stdout: '',
+            stderr: '',
+          };
+        } catch (e) {
+          newState.leftObject = null;
+          newState.leftStatus = {
+            success: false,
+            cmdline: '',
+            stdout: 'Failed to parse object',
+            stderr: e instanceof Error ? e.message : String(e),
+          };
+        }
       }
     }
     if (message.rightObject !== undefined) {
@@ -404,10 +420,26 @@ const handleMessage = (event: MessageEvent) => {
         if (diffConfig == null) {
           diffConfig = buildDiffConfig(message.configProperties);
         }
-        newState.rightObject = diff.Object.parse(
-          new Uint8Array(message.rightObject),
-          diffConfig,
-        );
+        try {
+          newState.rightObject = diff.Object.parse(
+            new Uint8Array(message.rightObject),
+            diffConfig,
+          );
+          newState.rightStatus = {
+            success: true,
+            cmdline: '',
+            stdout: '',
+            stderr: '',
+          };
+        } catch (e) {
+          newState.rightObject = null;
+          newState.rightStatus = {
+            success: false,
+            cmdline: '',
+            stdout: 'Failed to parse object',
+            stderr: e instanceof Error ? e.message : String(e),
+          };
+        }
       }
     }
     for (const k in newState) {

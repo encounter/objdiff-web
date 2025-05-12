@@ -4,7 +4,7 @@ import styles from './SymbolsView.module.css';
 import clsx from 'clsx';
 import memoizeOne from 'memoize-one';
 import { type diff, display } from 'objdiff-wasm';
-import { memo, useMemo } from 'react';
+import { memo, useCallback, useMemo } from 'react';
 import AutoSizer from 'react-virtualized-auto-sizer';
 import {
   FixedSizeList,
@@ -12,6 +12,7 @@ import {
   areEqual,
 } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
+import type { BuildStatus } from '../../shared/messages';
 import { createContextMenu, renderContextItems } from '../common/ContextMenu';
 import TooltipShared from '../common/TooltipShared';
 import {
@@ -23,9 +24,11 @@ import {
 } from '../state';
 import { percentClass, useFontSize } from '../util/util';
 
+type Side = keyof UnitScrollOffsets;
+
 type SymbolTooltipContent = {
   symbolRef: display.SectionDisplaySymbol;
-  side: keyof UnitScrollOffsets;
+  side: Side;
 };
 
 const { ContextMenuProvider, useContextMenu } =
@@ -75,7 +78,7 @@ const SymbolRow = ({
   obj: diff.ObjectDiff;
   section: SectionData;
   symbolRef: display.SectionDisplaySymbol;
-  side: keyof UnitScrollOffsets;
+  side: Side;
   style?: React.CSSProperties;
 }) => {
   const setSelectedSymbol = useAppStore((state) => state.setSelectedSymbol);
@@ -164,10 +167,11 @@ const SymbolRow = ({
 type SectionData = display.SectionDisplay & { collapsed: boolean };
 
 type ItemData = {
+  status: BuildStatus | null;
   obj: diff.ObjectDiff | undefined;
   itemCount: number;
   sections: SectionData[];
-  side: keyof UnitScrollOffsets;
+  side: Side;
   setSectionCollapsed: (section: string, collapsed: boolean) => void;
 };
 
@@ -215,14 +219,16 @@ const SymbolListRow = memo(
 );
 
 const createItemDataFn = (
+  status: BuildStatus | null,
   obj: diff.ObjectDiff | undefined,
   collapsedSections: Record<string, boolean>,
   search: string | null,
-  side: keyof UnitScrollOffsets,
+  side: Side,
   setSectionCollapsed: (section: string, collapsed: boolean) => void,
 ): ItemData => {
   if (!obj) {
     return {
+      status,
       obj,
       itemCount: 0,
       sections: [],
@@ -264,6 +270,7 @@ const createItemDataFn = (
     });
   }
   return {
+    status,
     obj,
     itemCount,
     sections,
@@ -275,11 +282,19 @@ const createItemDataLeft = memoizeOne(createItemDataFn);
 const createItemDataRight = memoizeOne(createItemDataFn);
 
 const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
-  const { buildRunning, currentUnit, hasProjectConfig } = useExtensionStore(
+  const {
+    buildRunning,
+    currentUnit,
+    hasProjectConfig,
+    leftStatus,
+    rightStatus,
+  } = useExtensionStore(
     useShallow((state) => ({
       buildRunning: state.buildRunning,
       currentUnit: state.currentUnit,
       hasProjectConfig: state.projectConfig != null,
+      leftStatus: state.leftStatus,
+      rightStatus: state.rightStatus,
     })),
   );
   const currentUnitName = currentUnit?.name || '';
@@ -307,14 +322,14 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
     () => useAppStore.getState().getUnitState(currentUnitName).scrollOffsets,
     [currentUnitName],
   );
-  const setLeftSectionCollapsed = useMemo(
-    () => (section: string, collapsed: boolean) => {
+  const setLeftSectionCollapsed = useCallback(
+    (section: string, collapsed: boolean) => {
       setUnitSectionCollapsed(currentUnitName, section, 'left', collapsed);
     },
     [currentUnitName, setUnitSectionCollapsed],
   );
-  const setRightSectionCollapsed = useMemo(
-    () => (section: string, collapsed: boolean) => {
+  const setRightSectionCollapsed = useCallback(
+    (section: string, collapsed: boolean) => {
       setUnitSectionCollapsed(currentUnitName, section, 'right', collapsed);
     },
     [currentUnitName, setUnitSectionCollapsed],
@@ -324,12 +339,21 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
     height: number,
     width: number,
     itemData: ItemData,
-    side: keyof UnitScrollOffsets,
+    side: Side,
   ) => {
     if (!itemData.obj) {
+      if (!itemData.status || itemData.status.success) {
+        return (
+          <div className={clsx(styles.symbolList, styles.noObject)}>
+            No object configured
+          </div>
+        );
+      }
       return (
         <div className={clsx(styles.symbolList, styles.noObject)}>
-          No object configured
+          <pre>{itemData.status.cmdline}</pre>
+          <pre>{itemData.status.stdout}</pre>
+          <pre>{itemData.status.stderr}</pre>
         </div>
       );
     }
@@ -357,6 +381,7 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
 
   const itemSize = useFontSize() * 1.33;
   const leftItemData = createItemDataLeft(
+    leftStatus,
     diff.left,
     collapsedSections.left,
     search,
@@ -364,6 +389,7 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
     setLeftSectionCollapsed,
   );
   const rightItemData = createItemDataRight(
+    rightStatus,
     diff.right,
     collapsedSections.right,
     search,
@@ -371,34 +397,49 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
     setRightSectionCollapsed,
   );
 
+  const setAllSections = (side: Side, value: boolean) => {
+    if (side === 'left') {
+      for (const section of leftItemData.sections) {
+        setUnitSectionCollapsed(currentUnitName, section.id, 'left', value);
+      }
+    } else {
+      for (const section of rightItemData.sections) {
+        setUnitSectionCollapsed(currentUnitName, section.id, 'right', value);
+      }
+    }
+  };
+
+  const expandCollapse = (side: Side) => (
+    <>
+      <div className={headerStyles.spacer} />
+      <button title="Collapse all" onClick={() => setAllSections(side, true)}>
+        <span className="codicon codicon-chevron-up" />
+      </button>
+      <button title="Expand all" onClick={() => setAllSections(side, false)}>
+        <span className="codicon codicon-chevron-down" />
+      </button>
+    </>
+  );
+
   const unitNameRow = (
-    <div className={headerStyles.row}>
-      <span className={clsx(headerStyles.label, headerStyles.emphasized)}>
-        {currentUnitName}
-      </span>
-    </div>
+    <span className={clsx(headerStyles.label, headerStyles.emphasized)}>
+      {currentUnitName}
+    </span>
   );
 
   const filterRow = (
-    <div className={headerStyles.row}>
-      <input
-        type="text"
-        placeholder="Filter symbols"
-        value={search || ''}
-        onChange={(e) => {
-          const value = e.target.value;
-          setUnitSearch(currentUnitName, value);
-        }}
-      />
-    </div>
+    <input
+      type="text"
+      placeholder="Filter symbols"
+      value={search || ''}
+      onChange={(e) => setUnitSearch(currentUnitName, e.target.value)}
+    />
   );
 
   const settingsRow = (
-    <div className={headerStyles.row}>
-      <button title="Settings" onClick={() => setCurrentView('settings')}>
-        <span className="codicon codicon-settings-gear" />
-      </button>
-    </div>
+    <button title="Settings" onClick={() => setCurrentView('settings')}>
+      <span className="codicon codicon-settings-gear" />
+    </button>
   );
 
   return (
@@ -417,7 +458,10 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
             ) : null}
             <span className={headerStyles.label}>Target object</span>
           </div>
-          {currentUnitName ? unitNameRow : filterRow}
+          <div className={headerStyles.row}>
+            {currentUnitName ? unitNameRow : filterRow}
+            {expandCollapse('left')}
+          </div>
         </div>
         <div className={headerStyles.column}>
           <div className={headerStyles.row}>
@@ -432,7 +476,10 @@ const SymbolsView = ({ diff }: { diff: diff.DiffResult }) => {
             )}
             <span className={headerStyles.label}>Base object</span>
           </div>
-          {currentUnitName ? filterRow : settingsRow}
+          <div className={headerStyles.row}>
+            {currentUnitName ? filterRow : settingsRow}
+            {expandCollapse('right')}
+          </div>
         </div>
       </div>
       <div className={styles.symbols}>

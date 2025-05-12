@@ -3,7 +3,7 @@
   "displayName": "objdiff",
   "description": "A local diffing tool for decompilation projects",
   "publisher": "decomp-dev",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "repository": {
     "type": "git",
     "url": "https://github.com/encounter/objdiff-web"
@@ -17,13 +17,14 @@
     "extension:build": "rsbuild build --env-mode extension",
     "extension:dev": "rsbuild build -w -m development --env-mode extension",
     "extension:package": "pnpm run extension:build && vsce package --no-dependencies",
-    "extension:publish": "pnpm run extension:build && vsce publish --no-dependencies"
+    "extension:publish": "pnpm run extension:build && vsce publish --no-dependencies",
+    "postinstall": "tsx update-config.ts"
   },
   "dependencies": {
     "@vscode/codicons": "^0.0.36",
     "clsx": "^2.1.1",
     "memoize-one": "^6.0.0",
-    "objdiff-wasm": "3.0.0-beta.6",
+    "objdiff-wasm": "3.0.0-beta.7",
     "picomatch": "^4.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -277,6 +278,21 @@
               null,
               null
             ]
+          },
+          "objdiff.mips.registerPrefix": {
+            "type": "boolean",
+            "description": "Display MIPS register names with a '$' prefix.",
+            "default": false
+          }
+        }
+      },
+      {
+        "title": "PowerPC",
+        "properties": {
+          "objdiff.ppc.calculatePoolRelocations": {
+            "type": "boolean",
+            "description": "Display pooled data references in functions as fake relocations.",
+            "default": true
           }
         }
       },
