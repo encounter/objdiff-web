@@ -27,6 +27,7 @@ export type StateMessage = {
   leftObject?: ArrayBuffer | null;
   rightObject?: ArrayBuffer | null;
   projectConfig?: ProjectConfig | null;
+  diffLabel?: string | null;
 };
 
 // decomp.me colors

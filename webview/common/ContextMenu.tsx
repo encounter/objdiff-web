@@ -23,9 +23,14 @@ export type ContextMenuState<T> = Readonly<{
   data: T;
 }>;
 
-type ContextMenuProps<T> = React.PropsWithChildren<{
+export type ContextMenuRender<T> = (
+  state: ContextMenuState<T>,
+  close: () => void,
+) => React.ReactNode;
+
+export type ContextMenuProps<T> = React.PropsWithChildren<{
   className?: string;
-  render?: (state: ContextMenuState<T>, close: () => void) => React.ReactNode;
+  render?: ContextMenuRender<T>;
 }>;
 
 export function createContextMenu<T>(): {
@@ -55,9 +60,7 @@ export function createContextMenu<T>(): {
         });
       }, []);
 
-      const close = useCallback(() => {
-        setState(null);
-      }, []);
+      const close = useCallback(() => setState(null), []);
 
       const closeIfOutside = useCallback(
         (e: Event) => {
@@ -108,9 +111,7 @@ export function createContextMenu<T>(): {
           observer.observe(state.target.parentNode, {
             childList: true,
           });
-          return () => {
-            observer.disconnect();
-          };
+          return () => observer.disconnect();
         }
       }, [state?.target, close]);
 
@@ -186,12 +187,8 @@ export function renderContextItems(
             className={styles.contextMenuItem}
             onClick={() => {
               navigator.clipboard.writeText(item.val.value).then(
-                () => {
-                  close();
-                },
-                (e) => {
-                  console.warn('Failed to copy:', e);
-                },
+                () => close(),
+                (e) => console.warn('Failed to copy:', e),
               );
             }}
           >

@@ -36,6 +36,11 @@ function sendMessage(data: InboundMessage) {
 let resolvedProjectConfig: ProjectConfig | null = null;
 
 async function fetchFile(path: string): Promise<Response> {
+  if (!path) {
+    return Promise.resolve(
+      new Response(null, { status: 404, statusText: 'Not Found' }),
+    );
+  }
   const search = new URLSearchParams();
   search.set('path', path);
   const response = await fetch(`/api/get?${search.toString()}`);
@@ -59,6 +64,54 @@ if (serializedConfigProperties) {
   configProperties = JSON.parse(serializedConfigProperties);
 }
 
+async function fetchUnitFiles(unit: Unit, out: StateMessage): Promise<void> {
+  const leftPromise = fetchFile(unit.target_path ?? '')
+    .then((r) => r.arrayBuffer())
+    .then(
+      (o) => {
+        out.leftObject = o;
+        out.leftStatus = {
+          success: true,
+          cmdline: '',
+          stdout: '',
+          stderr: '',
+        };
+      },
+      (e) => {
+        out.leftObject = null;
+        out.leftStatus = {
+          success: false,
+          cmdline: '',
+          stdout: '',
+          stderr: `Failed to fetch object: ${e}`,
+        };
+      },
+    );
+  const rightPromise = fetchFile(unit.base_path ?? '')
+    .then((r) => r.arrayBuffer())
+    .then(
+      (o) => {
+        out.rightObject = o;
+        out.rightStatus = {
+          success: true,
+          cmdline: '',
+          stdout: '',
+          stderr: '',
+        };
+      },
+      (e) => {
+        out.rightObject = null;
+        out.rightStatus = {
+          success: false,
+          cmdline: '',
+          stdout: '',
+          stderr: `Failed to fetch object: ${e}`,
+        };
+      },
+    );
+  await Promise.all([leftPromise, rightPromise]);
+}
+
 async function handleMessage(msg: OutboundMessage): Promise<void> {
   switch (msg.type) {
     case 'ready': {
@@ -70,17 +123,14 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
         buildRunning: false,
         configProperties,
         currentUnit: null,
+        leftStatus: null,
+        rightStatus: null,
         leftObject: null,
         rightObject: null,
         projectConfig: resolvedProjectConfig,
       };
       if (lastUnit) {
-        out.leftObject = await fetchFile(lastUnit.target_path ?? '').then((r) =>
-          r.arrayBuffer(),
-        );
-        out.rightObject = await fetchFile(lastUnit.base_path ?? '').then((r) =>
-          r.arrayBuffer(),
-        );
+        await fetchUnitFiles(lastUnit, out);
       }
       sendMessage(out);
       break;
@@ -90,16 +140,13 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
       const out: StateMessage = {
         type: 'state',
         buildRunning: false,
+        leftStatus: null,
+        rightStatus: null,
         leftObject: null,
         rightObject: null,
       };
       if (lastUnit) {
-        out.leftObject = await fetchFile(lastUnit.target_path ?? '').then((r) =>
-          r.arrayBuffer(),
-        );
-        out.rightObject = await fetchFile(lastUnit.base_path ?? '').then((r) =>
-          r.arrayBuffer(),
-        );
+        await fetchUnitFiles(lastUnit, out);
       }
       sendMessage(out);
       break;
@@ -115,17 +162,14 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
         type: 'state',
         buildRunning: false,
         currentUnit: unit,
+        leftStatus: null,
+        rightStatus: null,
         leftObject: null,
         rightObject: null,
       };
       if (unit) {
         sendMessage({ type: 'state', buildRunning: true });
-        out.leftObject = await fetchFile(unit.target_path ?? '').then((r) =>
-          r.arrayBuffer(),
-        );
-        out.rightObject = await fetchFile(unit.base_path ?? '').then((r) =>
-          r.arrayBuffer(),
-        );
+        await fetchUnitFiles(unit, out);
       }
       lastUnit = unit;
       localStorage.setItem('lastUnit', JSON.stringify(unit));

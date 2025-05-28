@@ -5,8 +5,6 @@
 .instruction-row {
   display: flex;
   flex-direction: row;
-  gap: 0.5em;
-  height: var(--list-row-height);
 }
 
 .instruction-cell {

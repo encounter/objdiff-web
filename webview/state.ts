@@ -33,20 +33,16 @@ export type SymbolRefByName = {
   sectionName: string | null;
 };
 
-export type UnitScrollOffsets = {
-  left: number;
-  right: number;
-};
-export type UnitCollapsedSections = {
-  left: Record<string, boolean>;
-  right: Record<string, boolean>;
-};
+export type Side = 'left' | 'right';
+export type UnitScrollOffsets = { [key in Side]: number };
+export type UnitCollapsedSections = { [key in Side]: Record<string, boolean> };
 
 export type UnitState = {
   scrollOffsets: UnitScrollOffsets;
   symbolScrollOffsets: Record<string, number>;
   collapsedSections: UnitCollapsedSections;
   search: string | null;
+  mappings: Record<string, string>;
 };
 const defaultUnitState: UnitState = {
   scrollOffsets: { left: 0, right: 0 },
@@ -56,6 +52,7 @@ const defaultUnitState: UnitState = {
     right: {},
   },
   search: null,
+  mappings: {},
 };
 
 export type CurrentView = 'main' | 'settings';
@@ -68,7 +65,7 @@ export interface AppState {
   currentView: CurrentView;
   collapsedUnits: Record<string, boolean>;
 
-  getUnitState(unit: string): UnitState;
+  getUnitState(unit: string | null | undefined): UnitState;
   setSelectedSymbol: (
     leftSymbol: SymbolRefByName | null,
     rightSymbol: SymbolRefByName | null,
@@ -91,6 +88,11 @@ export interface AppState {
   ) => void;
   setUnitSearch: (unit: string, search: string | null) => void;
   setUnitsScrollOffset: (offset: number) => void;
+  setUnitMapping: (
+    unit: string,
+    left: string | null | undefined,
+    right: string | null | undefined,
+  ) => void;
   setHighlight: (highlight: HighlightState) => void;
   setCurrentView: (view: CurrentView) => void;
   setCollapsedUnit: (unit: string, collapsed: boolean) => void;
@@ -123,7 +125,9 @@ export const useAppStore = create<AppState>((set) => {
     collapsedUnits: {},
 
     getUnitState(unit) {
-      return this.unitStates[unit] ?? defaultUnitState;
+      return unit == null
+        ? defaultUnitState
+        : (this.unitStates[unit] ?? defaultUnitState);
     },
     setSelectedSymbol: (leftSymbol, rightSymbol) =>
       set({ leftSymbol, rightSymbol }),
@@ -160,6 +164,23 @@ export const useAppStore = create<AppState>((set) => {
         search,
       })),
     setUnitsScrollOffset: (offset) => set({ unitsScrollOffset: offset }),
+    setUnitMapping: (unit, left, right) =>
+      setUnitState(unit, (state) => {
+        const newMappings = Object.fromEntries(
+          Object.entries(state.mappings || {}).filter(
+            ([k, v]) =>
+              (left == null || k !== left) && (right == null || v !== right),
+          ),
+        );
+        if (left != null && right != null && left !== right) {
+          // Only add new mapping if both sides are defined and different
+          newMappings[left] = right;
+        }
+        return {
+          ...state,
+          mappings: newMappings,
+        };
+      }),
     setHighlight: (highlight: HighlightState) => set({ highlight }),
     setCurrentView: (currentView) => set({ currentView }),
     setCollapsedUnit: (unit, collapsed) =>
@@ -178,14 +199,11 @@ export type ExtensionState = {
   currentUnit: Unit | null;
   leftStatus: BuildStatus | null;
   rightStatus: BuildStatus | null;
-  leftObject: diff.Object | null;
-  rightObject: diff.Object | null;
-  result: diff.DiffResult | null;
-  lastBuilt: number | null;
+  leftObject: ArrayBuffer | null;
+  rightObject: ArrayBuffer | null;
   projectConfig: ProjectConfig | null;
+  diffLabel: string | null;
   ready: boolean;
-
-  setResult: (result: diff.DiffResult | null | undefined) => void;
 };
 export const useExtensionStore = create(
   subscribeWithSelector<ExtensionState>((set) => ({
@@ -197,18 +215,9 @@ export const useExtensionStore = create(
     rightStatus: null,
     leftObject: null,
     rightObject: null,
-    result: null,
-    lastBuilt: null,
     projectConfig: null,
+    diffLabel: null,
     ready: false,
-
-    setResult: (result: diff.DiffResult | null | undefined) => {
-      if (result === undefined) {
-        set({ lastBuilt: Date.now() });
-      } else {
-        set({ result, lastBuilt: Date.now() });
-      }
-    },
   })),
 );
 
@@ -275,7 +284,8 @@ subscriptions.push(
           k !== 'setUnitsScrollOffset' &&
           k !== 'setHighlight' &&
           k !== 'setCurrentView' &&
-          k !== 'setCollapsedUnit'
+          k !== 'setCollapsedUnit' &&
+          k !== 'setUnitMapping'
         ) {
           serialized[k] = state[k] as any;
         }
@@ -330,117 +340,30 @@ export function buildDiffConfig(
   return config;
 }
 
-// Run diff when objects or config properties change
-subscriptions.push(
-  useExtensionStore.subscribe(
-    (state) => ({
-      leftObject: state.leftObject,
-      rightObject: state.rightObject,
-      configProperties: state.configProperties,
-      setResult: state.setResult,
-    }),
-    (
-      { leftObject, rightObject, configProperties, setResult },
-      {
-        leftObject: prevLeftObject,
-        rightObject: prevRightObject,
-        configProperties: prevConfigProperties,
-      },
-    ) => {
-      if (leftObject == null && rightObject == null) {
-        setResult(null);
-      } else if (
-        configProperties === prevConfigProperties &&
-        leftObject?.hash() === prevLeftObject?.hash() &&
-        rightObject?.hash() === prevRightObject?.hash()
-      ) {
-        // Nothing changed, but update build time
-        setResult(undefined);
-      } else {
-        const start = performance.now();
-        const diffConfig = buildDiffConfig(configProperties);
-        const result = diff.runDiff(
-          leftObject ?? undefined,
-          rightObject ?? undefined,
-          diffConfig,
-        );
-        const end = performance.now();
-        console.debug('Diff time:', end - start, 'ms');
-        setResult(result);
-      }
-    },
-    { equalityFn: shallow },
-  ),
-);
-
 const handleMessage = (event: MessageEvent) => {
   const message = event.data as InboundMessage;
   if (message.type === 'state') {
+    console.log('Received state message', message);
     const newState: Partial<ExtensionState> = {
       ...message,
-      leftObject: undefined,
-      rightObject: undefined,
-      result: undefined,
       ready: true,
     };
-    let diffConfig: diff.DiffConfig | null = null;
-    if (message.leftObject !== undefined) {
-      if (message.leftObject == null) {
-        newState.leftObject = null;
-      } else {
-        if (diffConfig == null) {
-          diffConfig = buildDiffConfig(message.configProperties);
-        }
-        try {
-          newState.leftObject = diff.Object.parse(
-            new Uint8Array(message.leftObject),
-            diffConfig,
-          );
-          newState.leftStatus = {
-            success: true,
-            cmdline: '',
-            stdout: '',
-            stderr: '',
-          };
-        } catch (e) {
-          newState.leftObject = null;
-          newState.leftStatus = {
-            success: false,
-            cmdline: '',
-            stdout: 'Failed to parse object',
-            stderr: e instanceof Error ? e.message : String(e),
-          };
-        }
-      }
+    // Backwards compatibility for decomp.me
+    if (message.leftObject && !message.leftStatus) {
+      newState.leftStatus = {
+        success: true,
+        cmdline: '',
+        stdout: '',
+        stderr: '',
+      };
     }
-    if (message.rightObject !== undefined) {
-      if (message.rightObject == null) {
-        newState.rightObject = null;
-      } else {
-        if (diffConfig == null) {
-          diffConfig = buildDiffConfig(message.configProperties);
-        }
-        try {
-          newState.rightObject = diff.Object.parse(
-            new Uint8Array(message.rightObject),
-            diffConfig,
-          );
-          newState.rightStatus = {
-            success: true,
-            cmdline: '',
-            stdout: '',
-            stderr: '',
-          };
-        } catch (e) {
-          newState.rightObject = null;
-          newState.rightStatus = {
-            success: false,
-            cmdline: '',
-            stdout: 'Failed to parse object',
-            stderr: e instanceof Error ? e.message : String(e),
-          };
-        }
-      }
+    if (message.rightObject && !message.rightStatus) {
+      newState.rightStatus = {
+        success: true,
+        cmdline: '',
+        stdout: '',
+        stderr: '',
+      };
     }
     for (const k in newState) {
       const key = k as keyof typeof newState;

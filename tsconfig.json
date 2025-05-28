@@ -15,9 +15,7 @@
     "allowImportingTsExtensions": true,
 
     /* type checking */
-    "strict": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "strict": true
   },
   "include": ["src", "webview", "shared"]
 }

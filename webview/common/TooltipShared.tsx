@@ -1,8 +1,51 @@
 import styles from './TooltipShared.module.css';
 
 import type { display } from 'objdiff-wasm';
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { Tooltip } from 'react-tooltip';
+
+type TooltipProps = {
+  'data-tooltip-id': string;
+  'data-tooltip-content': string;
+};
+
+export type TooltipCallback<T> = (content: T) => display.HoverItem[] | null;
+
+export function createTooltip<T>(): {
+  Tooltip: React.FC<{
+    callback: TooltipCallback<T>;
+  }>;
+  useTooltip: (content: T) => TooltipProps;
+} {
+  const id = generateRandomString(10);
+  return {
+    Tooltip: ({ callback }) => {
+      const callbackMemo = useCallback(
+        (content: string) => {
+          if (!content) {
+            return null;
+          }
+          const parsedContent = JSON.parse(content) as T;
+          return callback(parsedContent);
+        },
+        [callback],
+      );
+      return <TooltipShared id={id} callback={callbackMemo} />;
+    },
+    useTooltip: (content: T) =>
+      // useMemo(
+      //   () => ({
+      //     'data-tooltip-id': id,
+      //     'data-tooltip-content': JSON.stringify(content),
+      //   }),
+      //   [content],
+      // ),
+      ({
+        'data-tooltip-id': id,
+        'data-tooltip-content': JSON.stringify(content),
+      }),
+  };
+}
 
 const TooltipShared = ({
   id,
@@ -74,4 +117,12 @@ const TooltipContent = ({ items }: { items: display.HoverItem[] }) => {
 
 const TooltipContentMemo = React.memo(TooltipContent);
 
-export default TooltipShared;
+function generateRandomString(length: number): string {
+  const characters =
+    'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let result = '';
+  for (let i = 0; i < length; i++) {
+    result += characters.charAt(Math.floor(Math.random() * characters.length));
+  }
+  return result;
+}

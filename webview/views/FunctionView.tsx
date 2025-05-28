@@ -4,26 +4,20 @@ import styles from './FunctionView.module.css';
 import clsx from 'clsx';
 import memoizeOne from 'memoize-one';
 import { type diff, display } from 'objdiff-wasm';
-import { memo, useMemo } from 'react';
-import AutoSizer from 'react-virtualized-auto-sizer';
+import { memo, useCallback, useMemo } from 'react';
 import { FixedSizeList, areEqual } from 'react-window';
 import type { ListChildComponentProps } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
 import { createContextMenu, renderContextItems } from '../common/ContextMenu';
-import TooltipShared from '../common/TooltipShared';
-import {
-  buildDiffConfig,
-  runBuild,
-  useAppStore,
-  useExtensionStore,
-} from '../state';
+import { createTooltip } from '../common/TooltipShared';
+import { buildDiffConfig, useAppStore, useExtensionStore } from '../state';
 import {
   type HighlightState,
   highlightColumn,
   highlightMatches,
   updateHighlight,
 } from '../util/highlight';
-import { percentClass, useFontSize } from '../util/util';
+import { useFontSize } from '../util/util';
 
 const ROTATION_CLASSES = [
   styles.rotation0,
@@ -37,10 +31,20 @@ const ROTATION_CLASSES = [
   styles.rotation8,
 ];
 
-const { ContextMenuProvider, useContextMenu } = createContextMenu<{
+export type InstructionTooltipContent = {
   column: number;
   row: number;
-}>();
+};
+
+export const {
+  Tooltip: InstructionTooltip,
+  useTooltip: useInstructionTooltip,
+} = createTooltip<InstructionTooltipContent>();
+
+export const {
+  ContextMenuProvider: InstructionContextMenuProvider,
+  useContextMenu: useInstructionContextMenu,
+} = createContextMenu<InstructionTooltipContent>();
 
 const AsmCell = ({
   obj,
@@ -53,15 +57,28 @@ const AsmCell = ({
 }: {
   obj: diff.ObjectDiff | undefined;
   config: diff.DiffConfig;
-  symbol: display.SectionDisplaySymbol | null;
+  symbol: display.SymbolRef | null;
   row: number;
   column: number;
   highlight: HighlightState;
   setHighlight: (highlight: HighlightState) => void;
 }) => {
-  const onContextMenu = useContextMenu();
+  const onContextMenu = useInstructionContextMenu();
+  const tooltipContent: InstructionTooltipContent = useMemo(
+    () => ({
+      column,
+      row,
+    }),
+    [column, row],
+  );
+  const tooltipProps = useInstructionTooltip(tooltipContent);
+  const onContextMenuMemo = useCallback(
+    (e: React.MouseEvent<HTMLElement>) => onContextMenu(e, tooltipContent),
+    [onContextMenu, tooltipContent],
+  );
+
   if (!obj || !symbol) {
-    return <div className={styles.instructionCell} />;
+    return null;
   }
 
   const highlight = highlightColumn(highlightState, column);
@@ -198,22 +215,15 @@ const AsmCell = ({
     return <div className={clsx(classes)} />;
   }
 
-  const tooltipContent: InstructionTooltipContent = { column, row };
   return (
     <div
       className={clsx(classes)}
-      data-tooltip-id="instruction-tooltip"
-      data-tooltip-content={JSON.stringify(tooltipContent)}
-      onContextMenu={(e) => onContextMenu(e, { column, row })}
+      onContextMenu={onContextMenuMemo}
+      {...tooltipProps}
     >
       {out}
     </div>
   );
-};
-
-type InstructionTooltipContent = {
-  column: number;
-  row: number;
 };
 
 type ItemData = {
@@ -222,9 +232,7 @@ type ItemData = {
   result: diff.DiffResult;
   config: diff.DiffConfig;
   matchPercent?: number;
-  left: display.SectionDisplaySymbol | null;
   leftSymbol: display.SymbolDisplay | null;
-  right: display.SectionDisplaySymbol | null;
   rightSymbol: display.SymbolDisplay | null;
   highlight: HighlightState;
   setHighlight: (highlight: HighlightState) => void;
@@ -234,7 +242,7 @@ const AsmRow = memo(
   ({
     index,
     style,
-    data: { result, config, left, right, highlight, setHighlight },
+    data: { result, config, leftSymbol, rightSymbol, highlight, setHighlight },
   }: ListChildComponentProps<ItemData>) => {
     return (
       <div
@@ -254,7 +262,7 @@ const AsmRow = memo(
         <AsmCell
           obj={result.left}
           config={config}
-          symbol={left}
+          symbol={leftSymbol?.info.id ?? null}
           row={index}
           column={0}
           highlight={highlight}
@@ -263,7 +271,7 @@ const AsmRow = memo(
         <AsmCell
           obj={result.right}
           config={config}
-          symbol={right}
+          symbol={rightSymbol?.info.id ?? null}
           row={index}
           column={1}
           highlight={highlight}
@@ -278,20 +286,16 @@ const AsmRow = memo(
 const createItemData = memoizeOne(
   (
     result: diff.DiffResult,
-    left: display.SectionDisplaySymbol | null,
-    right: display.SectionDisplaySymbol | null,
+    leftSymbol: display.SymbolDisplay | null,
+    rightSymbol: display.SymbolDisplay | null,
     highlight: HighlightState,
     setHighlight: (highlight: HighlightState) => void,
   ): ItemData => {
-    const leftSymbol = left ? display.displaySymbol(result.left!, left) : null;
-    const rightSymbol = right
-      ? display.displaySymbol(result.right!, right)
-      : null;
     const itemCount = Math.max(
       leftSymbol?.rowCount || 0,
       rightSymbol?.rowCount || 0,
     );
-    const symbolName = leftSymbol?.name || rightSymbol?.name || '';
+    const symbolName = leftSymbol?.info.name || rightSymbol?.info.name || '';
     const config = buildDiffConfig(null);
     const matchPercent = rightSymbol?.matchPercent;
     return {
@@ -300,9 +304,7 @@ const createItemData = memoizeOne(
       result,
       config,
       matchPercent,
-      left,
       leftSymbol,
-      right,
       rightSymbol,
       highlight,
       setHighlight,
@@ -322,7 +324,7 @@ const SymbolLabel = ({
       </span>
     );
   }
-  const displayName = symbol.demangledName || symbol.name;
+  const displayName = symbol.info.demangledName || symbol.info.name;
   return (
     <span
       className={clsx(headerStyles.label, headerStyles.emphasized)}
@@ -333,36 +335,35 @@ const SymbolLabel = ({
   );
 };
 
-const FunctionView = ({
+export const InstructionList = ({
+  height,
+  width,
   diff,
-  left,
-  right,
+  leftSymbol,
+  rightSymbol,
 }: {
+  height: number;
+  width: number;
   diff: diff.DiffResult;
-  left: display.SectionDisplaySymbol | null;
-  right: display.SectionDisplaySymbol | null;
+  leftSymbol: display.SymbolDisplay | null;
+  rightSymbol: display.SymbolDisplay | null;
 }) => {
-  const { buildRunning, currentUnit, lastBuilt, hasProjectConfig } =
-    useExtensionStore(
-      useShallow((state) => ({
-        buildRunning: state.buildRunning,
-        currentUnit: state.currentUnit,
-        lastBuilt: state.lastBuilt,
-        hasProjectConfig: state.projectConfig != null,
-      })),
-    );
+  const currentUnit = useExtensionStore((state) => state.currentUnit);
+  const { highlight, setSymbolScrollOffset, setHighlight } = useAppStore(
+    useShallow((state) => ({
+      highlight: state.highlight,
+      setSymbolScrollOffset: state.setSymbolScrollOffset,
+      setHighlight: state.setHighlight,
+    })),
+  );
+  const itemData = createItemData(
+    diff,
+    leftSymbol,
+    rightSymbol,
+    highlight,
+    setHighlight,
+  );
   const currentUnitName = currentUnit?.name || '';
-  const { highlight, setSelectedSymbol, setSymbolScrollOffset, setHighlight } =
-    useAppStore(
-      useShallow((state) => ({
-        highlight: state.highlight,
-        setSelectedSymbol: state.setSelectedSymbol,
-        setSymbolScrollOffset: state.setSymbolScrollOffset,
-        setHighlight: state.setHighlight,
-      })),
-    );
-
-  const itemData = createItemData(diff, left, right, highlight, setHighlight);
   const initialScrollOffset = useMemo(
     () =>
       useAppStore.getState().getUnitState(currentUnitName).symbolScrollOffsets[
@@ -370,140 +371,25 @@ const FunctionView = ({
       ] || 0,
     [currentUnitName, itemData.symbolName],
   );
-
   const itemSize = useFontSize() * 1.33;
   return (
-    <>
-      <div className={headerStyles.header}>
-        <div className={headerStyles.column}>
-          <div className={headerStyles.row}>
-            <button title="Back" onClick={() => setSelectedSymbol(null, null)}>
-              <span className="codicon codicon-chevron-left" />
-            </button>
-          </div>
-          <div className={headerStyles.row}>
-            <SymbolLabel symbol={itemData.leftSymbol} />
-          </div>
-        </div>
-        <div className={headerStyles.column}>
-          <div className={headerStyles.row}>
-            {hasProjectConfig && (
-              <button
-                title="Build"
-                onClick={() => runBuild()}
-                disabled={buildRunning}
-              >
-                <span className="codicon codicon-refresh" />
-              </button>
-            )}
-            {lastBuilt && (
-              <span className={headerStyles.label}>
-                Last built: {new Date(lastBuilt).toLocaleTimeString('en-US')}
-              </span>
-            )}
-          </div>
-          <div className={headerStyles.row}>
-            {itemData.matchPercent !== undefined && (
-              <>
-                <span
-                  className={clsx(
-                    headerStyles.label,
-                    percentClass(itemData.matchPercent),
-                  )}
-                >
-                  {Math.floor(itemData.matchPercent).toFixed(0)}%
-                </span>
-                {' | '}
-              </>
-            )}
-            <SymbolLabel symbol={itemData.rightSymbol} />
-          </div>
-        </div>
-      </div>
-      <div className={styles.instructionList}>
-        <ContextMenuProvider
-          render={({ data }, close) => {
-            let obj: diff.ObjectDiff | undefined;
-            let symbol: display.SectionDisplaySymbol | undefined;
-            switch (data.column) {
-              case 0:
-                obj = diff.left;
-                symbol = itemData.left ?? undefined;
-                break;
-              case 1:
-                obj = diff.right;
-                symbol = itemData.right ?? undefined;
-                break;
-              default:
-                break;
-            }
-            if (!obj || !symbol) {
-              return null;
-            }
-            const items = display.instructionContext(
-              obj,
-              symbol,
-              data.row,
-              itemData.config,
-            );
-            return renderContextItems(items, close);
-          }}
-        >
-          <AutoSizer>
-            {({ height, width }) => (
-              <FixedSizeList
-                height={height}
-                itemCount={itemData.itemCount}
-                itemSize={itemSize}
-                width={width}
-                itemData={itemData}
-                overscanCount={20}
-                onScroll={(e) => {
-                  setSymbolScrollOffset(
-                    currentUnitName,
-                    itemData.symbolName,
-                    e.scrollOffset,
-                  );
-                }}
-                initialScrollOffset={initialScrollOffset}
-              >
-                {AsmRow}
-              </FixedSizeList>
-            )}
-          </AutoSizer>
-        </ContextMenuProvider>
-      </div>
-      <TooltipShared
-        id="instruction-tooltip"
-        callback={(content) => {
-          const data: InstructionTooltipContent = JSON.parse(content);
-          let obj: diff.ObjectDiff | undefined;
-          let symbol: display.SectionDisplaySymbol | undefined;
-          switch (data.column) {
-            case 0:
-              obj = diff.left;
-              symbol = itemData.left ?? undefined;
-              break;
-            case 1:
-              obj = diff.right;
-              symbol = itemData.right ?? undefined;
-              break;
-            default:
-              break;
-          }
-          if (!obj || !symbol) {
-            return null;
-          }
-          return display.instructionHover(
-            obj,
-            symbol,
-            data.row,
-            itemData.config,
-          );
-        }}
-      />
-    </>
+    <FixedSizeList
+      height={height}
+      itemCount={itemData.itemCount}
+      itemSize={itemSize}
+      width={width}
+      itemData={itemData}
+      overscanCount={20}
+      onScroll={(e) => {
+        setSymbolScrollOffset(
+          currentUnitName,
+          itemData.symbolName,
+          e.scrollOffset,
+        );
+      }}
+      initialScrollOffset={initialScrollOffset}
+    >
+      {AsmRow}
+    </FixedSizeList>
   );
 };
-
-export default FunctionView;

@@ -1,50 +1,77 @@
 import './App.css';
 
-import type { diff, display } from 'objdiff-wasm';
+import type { diff } from 'objdiff-wasm';
+import { useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
+import { useDiff } from './diff';
 import { useAppStore, useExtensionStore } from './state';
-import type { SymbolRefByName } from './state';
-import FunctionView from './views/FunctionView';
+import DiffView from './views/DiffView';
 import SettingsView from './views/SettingsView';
-import SymbolsView from './views/SymbolsView';
 import UnitsView from './views/UnitsView';
 
-const findSymbol = (
-  obj: diff.ObjectDiff | undefined,
-  symbolRef: SymbolRefByName | null,
-): display.SectionDisplaySymbol | null => {
-  if (!obj || !symbolRef) {
-    return null;
-  }
-  const idx = obj.findSymbol(
-    symbolRef.symbolName,
-    symbolRef.sectionName ?? undefined,
-  );
-  if (idx !== undefined) {
-    return {
-      symbol: idx,
-      isMappingSymbol: false,
-    };
-  }
-  return null;
-};
-
 const App = () => {
-  const { buildRunning, result, config, ready } = useExtensionStore(
+  const {
+    buildRunning,
+    configProperties,
+    currentUnit,
+    leftStatus,
+    rightStatus,
+    leftObject,
+    rightObject,
+    config,
+    ready,
+  } = useExtensionStore(
     useShallow((state) => ({
       buildRunning: state.buildRunning,
-      result: state.result,
+      configProperties: state.configProperties,
+      currentUnit: state.currentUnit,
+      leftStatus: state.leftStatus,
+      rightStatus: state.rightStatus,
+      leftObject: state.leftObject,
+      rightObject: state.rightObject,
       config: state.projectConfig,
       ready: state.ready,
     })),
   );
-  const { leftSymbolRef, rightSymbolRef, currentView } = useAppStore(
-    useShallow((state) => ({
-      leftSymbolRef: state.leftSymbol,
-      rightSymbolRef: state.rightSymbol,
-      currentView: state.currentView,
-    })),
+  const { leftSymbolRef, rightSymbolRef, currentView, mappings } = useAppStore(
+    useShallow((state) => {
+      const unitState = state.getUnitState(currentUnit?.name ?? '');
+      return {
+        leftSymbolRef: state.leftSymbol,
+        rightSymbolRef: state.rightSymbol,
+        currentView: state.currentView,
+        mappings: unitState?.mappings,
+      };
+    }),
   );
+  const mappingConfig = useMemo(() => {
+    const result: diff.MappingConfig = {
+      mappings: mappings == null ? [] : Object.entries(mappings),
+      selectingLeft: undefined,
+      selectingRight: undefined,
+    };
+    if (leftSymbolRef && !rightSymbolRef) {
+      result.selectingRight = leftSymbolRef.symbolName;
+      result.mappings = result.mappings.filter(
+        ([left, _]) => left !== leftSymbolRef.symbolName,
+      );
+    }
+    if (!leftSymbolRef && rightSymbolRef) {
+      result.selectingLeft = rightSymbolRef.symbolName;
+      result.mappings = result.mappings.filter(
+        ([_, right]) => right !== rightSymbolRef.symbolName,
+      );
+    }
+    return result;
+  }, [leftSymbolRef, rightSymbolRef, mappings]);
+  const result = useDiff({
+    leftStatus,
+    rightStatus,
+    leftObject,
+    rightObject,
+    configProperties,
+    mappingConfig,
+  });
 
   if (!ready) {
     // Uses panel background color to avoid flashing
@@ -53,15 +80,19 @@ const App = () => {
 
   switch (currentView) {
     case 'main':
-      if (result) {
-        const leftSymbol = findSymbol(result.left, leftSymbolRef);
-        const rightSymbol = findSymbol(result.right, rightSymbolRef);
-        if (leftSymbol || rightSymbol) {
-          return (
-            <FunctionView diff={result} left={leftSymbol} right={rightSymbol} />
-          );
-        }
-        return <SymbolsView diff={result} />;
+      if (
+        result.leftStatus ||
+        result.rightStatus ||
+        result.diff.left ||
+        result.diff.right
+      ) {
+        return (
+          <DiffView
+            result={result}
+            leftSymbolRef={leftSymbolRef}
+            rightSymbolRef={rightSymbolRef}
+          />
+        );
       }
 
       if (buildRunning) {

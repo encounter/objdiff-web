@@ -49,6 +49,14 @@
     --vscode-list-hoverBackground,
     light-dark(#f2f2f2, #2a2d2e)
   );
+  --list-row-selection-background: var(
+    --vscode-list-inactiveSelectionBackground,
+    light-dark(#e4e6f1, #37373d)
+  );
+  --list-row-highlight-background: var(
+    --vscode-list-activeSelectionBackground,
+    light-dark(#e8e8e8, #04395e)
+  );
 
   --line-number-foreground: var(--vscode-editorLineNumber-foreground, #6e7681);
 
