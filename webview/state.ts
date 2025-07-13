@@ -1,7 +1,7 @@
+import memoizeOne from 'memoize-one';
 import { diff } from 'objdiff-wasm';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { create } from 'zustand/react';
-import { shallow } from 'zustand/shallow';
 import {
   type ConfigProperties,
   type ConfigPropertyValue,
@@ -325,20 +325,18 @@ export function openSettings(): void {
   vsCode.postMessage({ type: 'openSettings' });
 }
 
-export function buildDiffConfig(
-  configProperties: ConfigProperties | null | undefined,
-): diff.DiffConfig {
-  const config = new diff.DiffConfig();
-  const props = getModifiedConfigProperties(
-    configProperties ?? useExtensionStore.getState().configProperties,
-  );
-  for (const key in props) {
-    if (props[key] != null) {
-      config.setProperty(key, props[key].toString());
+export const buildDiffConfig = memoizeOne(
+  (configProperties: ConfigProperties): diff.DiffConfig => {
+    const config = new diff.DiffConfig();
+    const props = getModifiedConfigProperties(configProperties);
+    for (const key in props) {
+      if (props[key] != null) {
+        config.setProperty(key, props[key].toString());
+      }
     }
-  }
-  return config;
-}
+    return config;
+  },
+);
 
 const handleMessage = (event: MessageEvent) => {
   const message = event.data as InboundMessage;

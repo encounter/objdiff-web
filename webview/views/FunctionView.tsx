@@ -1,14 +1,12 @@
-import headerStyles from '../common/Header.module.css';
 import styles from './FunctionView.module.css';
 
 import clsx from 'clsx';
-import memoizeOne from 'memoize-one';
 import { type diff, display } from 'objdiff-wasm';
 import { memo, useCallback, useMemo } from 'react';
 import { FixedSizeList, areEqual } from 'react-window';
-import type { ListChildComponentProps } from 'react-window';
+import type { ListChildComponentProps, ListOnScrollProps } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
-import { createContextMenu, renderContextItems } from '../common/ContextMenu';
+import { createContextMenu } from '../common/ContextMenu';
 import { createTooltip } from '../common/TooltipShared';
 import { buildDiffConfig, useAppStore, useExtensionStore } from '../state';
 import {
@@ -283,58 +281,6 @@ const AsmRow = memo(
   areEqual,
 );
 
-const createItemData = memoizeOne(
-  (
-    result: diff.DiffResult,
-    leftSymbol: display.SymbolDisplay | null,
-    rightSymbol: display.SymbolDisplay | null,
-    highlight: HighlightState,
-    setHighlight: (highlight: HighlightState) => void,
-  ): ItemData => {
-    const itemCount = Math.max(
-      leftSymbol?.rowCount || 0,
-      rightSymbol?.rowCount || 0,
-    );
-    const symbolName = leftSymbol?.info.name || rightSymbol?.info.name || '';
-    const config = buildDiffConfig(null);
-    const matchPercent = rightSymbol?.matchPercent;
-    return {
-      itemCount,
-      symbolName,
-      result,
-      config,
-      matchPercent,
-      leftSymbol,
-      rightSymbol,
-      highlight,
-      setHighlight,
-    };
-  },
-);
-
-const SymbolLabel = ({
-  symbol,
-}: {
-  symbol: display.SymbolDisplay | null;
-}) => {
-  if (!symbol) {
-    return (
-      <span className={clsx(headerStyles.label, headerStyles.missing)}>
-        Missing
-      </span>
-    );
-  }
-  const displayName = symbol.info.demangledName || symbol.info.name;
-  return (
-    <span
-      className={clsx(headerStyles.label, headerStyles.emphasized)}
-      title={displayName}
-    >
-      {displayName}
-    </span>
-  );
-};
-
 export const InstructionList = ({
   height,
   width,
@@ -348,7 +294,12 @@ export const InstructionList = ({
   leftSymbol: display.SymbolDisplay | null;
   rightSymbol: display.SymbolDisplay | null;
 }) => {
-  const currentUnit = useExtensionStore((state) => state.currentUnit);
+  const { configProperties, currentUnit } = useExtensionStore(
+    useShallow((state) => ({
+      configProperties: state.configProperties,
+      currentUnit: state.currentUnit,
+    })),
+  );
   const { highlight, setSymbolScrollOffset, setHighlight } = useAppStore(
     useShallow((state) => ({
       highlight: state.highlight,
@@ -356,13 +307,33 @@ export const InstructionList = ({
       setHighlight: state.setHighlight,
     })),
   );
-  const itemData = createItemData(
+  const itemData = useMemo(() => {
+    const itemCount = Math.max(
+      leftSymbol?.rowCount || 0,
+      rightSymbol?.rowCount || 0,
+    );
+    const symbolName = leftSymbol?.info.name || rightSymbol?.info.name || '';
+    const config = buildDiffConfig(configProperties);
+    const matchPercent = leftSymbol?.matchPercent;
+    return {
+      itemCount,
+      symbolName,
+      result: diff,
+      config,
+      matchPercent,
+      leftSymbol,
+      rightSymbol,
+      highlight,
+      setHighlight,
+    };
+  }, [
     diff,
     leftSymbol,
     rightSymbol,
+    configProperties,
     highlight,
     setHighlight,
-  );
+  ]);
   const currentUnitName = currentUnit?.name || '';
   const initialScrollOffset = useMemo(
     () =>
@@ -372,6 +343,16 @@ export const InstructionList = ({
     [currentUnitName, itemData.symbolName],
   );
   const itemSize = useFontSize() * 1.33;
+  const onScrollMemo = useCallback(
+    (e: ListOnScrollProps) => {
+      setSymbolScrollOffset(
+        currentUnitName,
+        itemData.symbolName,
+        e.scrollOffset,
+      );
+    },
+    [currentUnitName, itemData.symbolName, setSymbolScrollOffset],
+  );
   return (
     <FixedSizeList
       height={height}
@@ -380,13 +361,7 @@ export const InstructionList = ({
       width={width}
       itemData={itemData}
       overscanCount={20}
-      onScroll={(e) => {
-        setSymbolScrollOffset(
-          currentUnitName,
-          itemData.symbolName,
-          e.scrollOffset,
-        );
-      }}
+      onScroll={onScrollMemo}
       initialScrollOffset={initialScrollOffset}
     >
       {AsmRow}

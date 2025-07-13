@@ -1,80 +1,56 @@
+import clsx from 'clsx';
 import styles from './TooltipShared.module.css';
 
 import type { display } from 'objdiff-wasm';
-import React, { useCallback, useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { Tooltip } from 'react-tooltip';
 
-type TooltipProps = {
+export type TooltipTriggerProps = {
   'data-tooltip-id': string;
   'data-tooltip-content': string;
 };
 
 export type TooltipCallback<T> = (content: T) => display.HoverItem[] | null;
 
+export type TooltipProps<T> = Omit<
+  React.ComponentProps<typeof Tooltip>,
+  'id' | 'render'
+> & {
+  callback: TooltipCallback<T>;
+};
+
 export function createTooltip<T>(): {
-  Tooltip: React.FC<{
-    callback: TooltipCallback<T>;
-  }>;
-  useTooltip: (content: T) => TooltipProps;
+  Tooltip: React.FC<TooltipProps<T>>;
+  useTooltip: (content: T) => TooltipTriggerProps;
 } {
   const id = generateRandomString(10);
   return {
-    Tooltip: ({ callback }) => {
-      const callbackMemo = useCallback(
-        (content: string) => {
-          if (!content) {
+    Tooltip: ({ callback, className, ...props }) => (
+      <Tooltip
+        {...props}
+        id={id}
+        className={clsx(styles.tooltip, className)}
+        render={({ content }) => {
+          const items = useMemo(() => {
+            if (!content) {
+              return null;
+            }
+            const parsedContent = JSON.parse(content) as T;
+            return callback(parsedContent);
+          }, [callback, content]);
+          if (!items) {
             return null;
           }
-          const parsedContent = JSON.parse(content) as T;
-          return callback(parsedContent);
-        },
-        [callback],
-      );
-      return <TooltipShared id={id} callback={callbackMemo} />;
-    },
-    useTooltip: (content: T) =>
-      // useMemo(
-      //   () => ({
-      //     'data-tooltip-id': id,
-      //     'data-tooltip-content': JSON.stringify(content),
-      //   }),
-      //   [content],
-      // ),
-      ({
-        'data-tooltip-id': id,
-        'data-tooltip-content': JSON.stringify(content),
-      }),
+          return <TooltipContentMemo items={items} />;
+        }}
+      />
+    ),
+    useTooltip: (content: T) => ({
+      'data-tooltip-id': id,
+      'data-tooltip-content': JSON.stringify(content),
+    }),
   };
 }
-
-const TooltipShared = ({
-  id,
-  callback,
-}: {
-  id: string;
-  callback: (content: string) => display.HoverItem[] | null;
-}) => {
-  return (
-    <Tooltip
-      id={id}
-      place="bottom"
-      className={styles.tooltip}
-      delayShow={500}
-      render={({ content }) => {
-        const items = useMemo(() => {
-          if (!content) {
-            return null;
-          }
-          return callback(content);
-        }, [callback, content]);
-        if (!items) {
-          return null;
-        }
-        return <TooltipContentMemo items={items} />;
-      }}
-    />
-  );
-};
 
 const TooltipContent = ({ items }: { items: display.HoverItem[] }) => {
   const out = [];

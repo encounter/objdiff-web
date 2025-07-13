@@ -101,10 +101,8 @@ const DiffView = ({
     () => resolveSymbol(result.diff?.right, rightSymbolRef),
     [result.diff?.right, rightSymbolRef],
   );
-  const diffConfig = useMemo(
-    () => buildDiffConfig(configProperties),
-    [configProperties],
-  );
+  // Already memoized
+  const diffConfig = buildDiffConfig(configProperties);
 
   let leftColumnView: ColumnView = {
     type: 'symbols',
@@ -317,8 +315,16 @@ const DiffView = ({
           </InstructionContextMenuProvider>
         </SymbolContextMenuProvider>
       </div>
-      <SymbolTooltip callback={symbolTooltipCallback} />
-      <InstructionTooltip callback={instructionTooltipCallback} />
+      <SymbolTooltip
+        place="bottom"
+        delayShow={500}
+        callback={symbolTooltipCallback}
+      />
+      <InstructionTooltip
+        place="bottom"
+        delayShow={500}
+        callback={instructionTooltipCallback}
+      />
     </>
   );
 };
