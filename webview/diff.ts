@@ -37,7 +37,7 @@ export const useDiff = ({
     try {
       left =
         leftObject?.byteLength && leftStatus?.success
-          ? diff.Object.parse(new Uint8Array(leftObject), diffConfig)
+          ? diff.Object.parse(new Uint8Array(leftObject), diffConfig, 'target')
           : undefined;
     } catch (e) {
       leftStatus = {
@@ -50,7 +50,7 @@ export const useDiff = ({
     try {
       right =
         rightObject?.byteLength && rightStatus?.success
-          ? diff.Object.parse(new Uint8Array(rightObject), diffConfig)
+          ? diff.Object.parse(new Uint8Array(rightObject), diffConfig, 'base')
           : undefined;
     } catch (e) {
       rightStatus = {
