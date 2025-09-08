@@ -1,39 +1,24 @@
 .data-row {
-  display: flex;
-  align-items: center;
-  font-family: var(--vscode-editor-font-family, monospace);
-  font-size: var(--vscode-editor-font-size, 13px);
-  line-height: 1.5;
+  font-family: var(--code-font-family);
+  font-size: var(--code-font-size);
   white-space: pre;
   cursor: default;
   padding: 0 8px;
+  text-wrap: nowrap;
+  overflow: hidden;
 }
 
 .combined-row {
   display: flex;
-  width: 100%;
 }
 
-.data-row:hover {
-  background-color: var(--vscode-list-hoverBackground);
+.diff-any {
+  background-color: rgba(255, 255, 255, 0.03);
 }
 
 .address {
-  color: var(--vscode-descriptionForeground);
+  color: var(--line-number-foreground);
   margin-right: 8px;
-}
-
-.hex-bytes {
-  margin-right: 8px;
-}
-
-.separator {
-  color: var(--vscode-descriptionForeground);
-  margin: 0 4px;
-}
-
-.ascii-chars {
-  color: var(--vscode-foreground);
 }
 
 .replace {

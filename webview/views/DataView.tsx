@@ -1,5 +1,6 @@
 import styles from './DataView.module.css';
 
+import clsx from 'clsx';
 import { type diff, display } from 'objdiff-wasm';
 import { memo, useCallback, useMemo } from 'react';
 import { FixedSizeList, areEqual } from 'react-window';
@@ -55,6 +56,9 @@ const DataRow = ({
   }
 
   const dataRow = display.displayDataRow(obj, symbol.info.id, row);
+  const anyDiff =
+    dataRow.segments.some((s) => s.kind !== 'none') ||
+    dataRow.relocations.some((r) => r.kind !== 'none');
   const out: React.ReactNode[] = [];
 
   // Display address
@@ -172,25 +176,13 @@ const DataRow = ({
     }
   }
 
-  out.push(
-    <span key="hex" className={styles.hexBytes}>
-      {hexBytes}
-    </span>,
-  );
-  out.push(
-    <span key="sep" className={styles.separator}>
-      {' '}
-    </span>,
-  );
-  out.push(
-    <span key="ascii" className={styles.asciiChars}>
-      {asciiChars}
-    </span>,
-  );
+  out.push(<span key="hex">{hexBytes}</span>);
+  out.push(<span key="sep"> </span>);
+  out.push(<span key="ascii">{asciiChars}</span>);
 
   return (
     <div
-      className={styles.dataRow}
+      className={clsx(styles.dataRow, anyDiff && styles.diffAny)}
       onContextMenu={onContextMenuMemo}
       {...tooltipProps}
     >
