@@ -17,6 +17,7 @@
   white-space: pre;
   overflow: hidden;
   padding-left: 0.5em;
+  cursor: default;
 }
 
 .highlightable {
