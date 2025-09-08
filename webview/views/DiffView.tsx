@@ -24,6 +24,12 @@ import {
 } from '../state';
 import { percentClass } from '../util/util';
 import {
+  DataContextMenuProvider,
+  DataList,
+  DataTooltip,
+  type DataTooltipContent,
+} from './DataView';
+import {
   InstructionContextMenuProvider,
   InstructionList,
   InstructionTooltip,
@@ -47,6 +53,12 @@ type ColumnViewAsm = {
   symbol: display.SymbolDisplay;
 };
 
+type ColumnViewData = {
+  type: 'data';
+  obj: diff.ObjectDiff;
+  symbol: display.SymbolDisplay;
+};
+
 type ColumnViewSymbols = {
   type: 'symbols';
   mappingSymbol: number | null;
@@ -60,6 +72,7 @@ type ColumnView =
   | ColumnViewNone
   | ColumnViewBuildStatus
   | ColumnViewAsm
+  | ColumnViewData
   | ColumnViewSymbols;
 
 export const resolveSymbol = (
@@ -140,22 +153,49 @@ const DiffView = ({
     }
   }
 
-  if (leftSymbol && rightSymbol) {
-    // Joint function view
+  let leftColumnType: ColumnView['type'] | null = null;
+  let rightColumnType: ColumnView['type'] | null = null;
+  if (leftSymbol && leftSuccess) {
+    switch (leftSymbol.info.sectionKind) {
+      case 'code':
+        leftColumnType = 'asm';
+        break;
+      case 'data':
+        leftColumnType = 'data';
+        break;
+      default:
+        break;
+    }
+  }
+  if (rightSymbol && rightSuccess) {
+    switch (rightSymbol.info.sectionKind) {
+      case 'code':
+        rightColumnType = 'asm';
+        break;
+      case 'data':
+        rightColumnType = 'data';
+        break;
+      default:
+        break;
+    }
+  }
+
+  if (leftSymbol && leftColumnType && rightSymbol && rightColumnType) {
+    // Joint view
     leftColumnView = {
-      type: 'asm',
+      type: leftColumnType,
       obj: result.diff!.left!,
       symbol: leftSymbol,
     };
     rightColumnView = {
-      type: 'asm',
+      type: rightColumnType,
       obj: result.diff!.right!,
       symbol: rightSymbol,
     };
-  } else if (leftSymbol) {
-    // Left function view only
+  } else if (leftSymbol && leftColumnType) {
+    // Left view only
     leftColumnView = {
-      type: 'asm',
+      type: leftColumnType,
       obj: result.diff!.left!,
       symbol: leftSymbol,
     };
@@ -166,10 +206,10 @@ const DiffView = ({
         mappingSymbol: leftSymbol.info.id,
       };
     }
-  } else if (rightSymbol) {
-    // Right function view only
+  } else if (rightSymbol && rightColumnType) {
+    // Right view only
     rightColumnView = {
-      type: 'asm',
+      type: rightColumnType,
       obj: result.diff!.right!,
       symbol: rightSymbol,
     };
@@ -258,6 +298,32 @@ const DiffView = ({
       [result.diff, leftSymbol, rightSymbol, diffConfig],
     );
 
+  const dataContextMenuRender: ContextMenuRender<DataTooltipContent> =
+    useCallback(
+      ({ data }, close) => {
+        let obj: diff.ObjectDiff | undefined;
+        let symbol: number | undefined;
+        switch (data.column) {
+          case 0:
+            obj = result.diff?.left;
+            symbol = leftSymbol?.info.id;
+            break;
+          case 1:
+            obj = result.diff?.right;
+            symbol = rightSymbol?.info.id;
+            break;
+          default:
+            break;
+        }
+        if (!obj || symbol === undefined) {
+          return null;
+        }
+        const items = display.dataContext(obj, symbol, data.row);
+        return renderContextItems(items, close);
+      },
+      [result.diff, leftSymbol, rightSymbol],
+    );
+
   const instructionTooltipCallback: TooltipCallback<InstructionTooltipContent> =
     useCallback(
       (data) => {
@@ -283,6 +349,30 @@ const DiffView = ({
       [result.diff, leftSymbol, rightSymbol, diffConfig],
     );
 
+  const dataTooltipCallback: TooltipCallback<DataTooltipContent> = useCallback(
+    (data) => {
+      let obj: diff.ObjectDiff | undefined;
+      let symbol: number | undefined;
+      switch (data.column) {
+        case 0:
+          obj = result.diff?.left;
+          symbol = leftSymbol?.info.id;
+          break;
+        case 1:
+          obj = result.diff?.right;
+          symbol = rightSymbol?.info.id;
+          break;
+        default:
+          break;
+      }
+      if (!obj || symbol === undefined) {
+        return null;
+      }
+      return display.dataHover(obj, symbol, data.row);
+    },
+    [result.diff, leftSymbol, rightSymbol],
+  );
+
   const [showMappedSymbols, setShowMappedSymbols] = useState<boolean>(false);
 
   return (
@@ -299,19 +389,21 @@ const DiffView = ({
       <div className={styles.content}>
         <SymbolContextMenuProvider render={symbolContextMenuRender}>
           <InstructionContextMenuProvider render={instructionContextMenuRender}>
-            <AutoSizer className={styles.content}>
-              {({ height, width }) => (
-                <DiffViewContent
-                  result={result}
-                  height={height}
-                  width={width}
-                  leftColumnView={leftColumnView}
-                  rightColumnView={rightColumnView}
-                  showMappedSymbols={showMappedSymbols}
-                  showHiddenSymbols={false} // TODO
-                />
-              )}
-            </AutoSizer>
+            <DataContextMenuProvider render={dataContextMenuRender}>
+              <AutoSizer className={styles.content}>
+                {({ height, width }) => (
+                  <DiffViewContent
+                    result={result}
+                    height={height}
+                    width={width}
+                    leftColumnView={leftColumnView}
+                    rightColumnView={rightColumnView}
+                    showMappedSymbols={showMappedSymbols}
+                    showHiddenSymbols={false} // TODO
+                  />
+                )}
+              </AutoSizer>
+            </DataContextMenuProvider>
           </InstructionContextMenuProvider>
         </SymbolContextMenuProvider>
       </div>
@@ -324,6 +416,11 @@ const DiffView = ({
         place="bottom"
         delayShow={500}
         callback={instructionTooltipCallback}
+      />
+      <DataTooltip
+        place="bottom"
+        delayShow={500}
+        callback={dataTooltipCallback}
       />
     </>
   );
@@ -480,7 +577,12 @@ const DiffViewHeader = ({
     />
   );
 
-  if (leftColumnView.type !== 'asm' && rightColumnView.type !== 'asm') {
+  if (
+    leftColumnView.type !== 'asm' &&
+    rightColumnView.type !== 'asm' &&
+    leftColumnView.type !== 'data' &&
+    rightColumnView.type !== 'data'
+  ) {
     const unitNameRow = (
       <span className={clsx(headerStyles.label, headerStyles.emphasized)}>
         {currentUnitName}
@@ -532,7 +634,7 @@ const DiffViewHeader = ({
   }
 
   const matchPercent =
-    leftColumnView.type === 'asm'
+    leftColumnView.type === 'asm' || leftColumnView.type === 'data'
       ? leftColumnView.symbol.matchPercent
       : undefined;
 
@@ -616,7 +718,8 @@ const SymbolLabel = ({
   currentUnitName: string;
 }) => {
   switch (view.type) {
-    case 'asm': {
+    case 'asm':
+    case 'data': {
       const displayName =
         view.symbol.info.demangledName || view.symbol.info.name;
       return (
@@ -705,6 +808,19 @@ const DiffViewContent = ({
     );
   }
 
+  if (leftColumnView.type === 'data' && rightColumnView.type === 'data') {
+    // Render joint data view
+    return (
+      <DataList
+        height={height}
+        width={width}
+        diff={result.diff!}
+        leftSymbol={leftColumnView.symbol}
+        rightSymbol={rightColumnView.symbol}
+      />
+    );
+  }
+
   let leftColumn = null;
   let rightColumn = null;
   if (leftColumnView.type === 'symbols') {
@@ -726,6 +842,16 @@ const DiffViewContent = ({
   } else if (leftColumnView.type === 'asm') {
     leftColumn = (
       <InstructionList
+        height={height}
+        width={width / 2}
+        diff={result.diff!}
+        leftSymbol={leftColumnView.symbol}
+        rightSymbol={null}
+      />
+    );
+  } else if (leftColumnView.type === 'data') {
+    leftColumn = (
+      <DataList
         height={height}
         width={width / 2}
         diff={result.diff!}
@@ -764,6 +890,16 @@ const DiffViewContent = ({
   } else if (rightColumnView.type === 'asm') {
     rightColumn = (
       <InstructionList
+        height={height}
+        width={width / 2}
+        diff={result.diff!}
+        leftSymbol={null}
+        rightSymbol={rightColumnView.symbol}
+      />
+    );
+  } else if (rightColumnView.type === 'data') {
+    rightColumn = (
+      <DataList
         height={height}
         width={width / 2}
         diff={result.diff!}

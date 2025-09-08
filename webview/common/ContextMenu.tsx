@@ -177,6 +177,9 @@ export function renderContextItems(
   items: display.ContextItem[],
   close: () => void,
 ): React.ReactNode {
+  if (items.length === 0) {
+    return null;
+  }
   return items.map((item, i) => {
     const key = `${item.tag}-${i}`;
     switch (item.tag) {

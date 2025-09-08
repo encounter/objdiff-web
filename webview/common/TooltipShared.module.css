@@ -12,13 +12,29 @@
 }
 
 .hover-item-label {
-  color: var(--color-blue);
+  color: var(--color-bright);
 }
 
 .hover-item-value {
-  color: var(--color-bright);
+  color: var(--foreground);
 }
 
 .hover-item-separator {
   border-color: var(--color-muted);
+}
+
+.label-color-special {
+  color: var(--color-blue);
+}
+
+.label-color-delete {
+  color: var(--color-red);
+}
+
+.label-color-insert {
+  color: var(--color-green);
+}
+
+.value-color-emphasized {
+  color: var(--color-bright);
 }

@@ -38,7 +38,7 @@ export function createTooltip<T>(): {
             const parsedContent = JSON.parse(content) as T;
             return callback(parsedContent);
           }, [callback, content]);
-          if (!items) {
+          if (!items || items.length === 0) {
             return null;
           }
           return <TooltipContentMemo items={items} />;
@@ -57,23 +57,46 @@ const TooltipContent = ({ items }: { items: display.HoverItem[] }) => {
   for (const [i, item] of items.entries()) {
     let inner: React.ReactNode;
     switch (item.tag) {
-      case 'text':
+      case 'text': {
+        let labelClass: string | null = null;
+        let valueClass: string | null = null;
+        switch (item.val.color) {
+          case 'special':
+            labelClass = styles.labelColorSpecial;
+            break;
+          case 'insert':
+            labelClass = styles.labelColorInsert;
+            break;
+          case 'delete':
+            labelClass = styles.labelColorDelete;
+            break;
+          case 'emphasized':
+            valueClass = styles.valueColorEmphasized;
+            break;
+          default:
+            break;
+        }
         if (item.val.label) {
           inner = (
             <>
-              <span className={styles.hoverItemLabel}>
+              <span className={clsx(styles.hoverItemLabel, labelClass)}>
                 {item.val.label}
                 {': '}
               </span>
-              <span className={styles.hoverItemValue}>{item.val.value}</span>
+              <span className={clsx(styles.hoverItemValue, valueClass)}>
+                {item.val.value}
+              </span>
             </>
           );
         } else {
           inner = (
-            <span className={styles.hoverItemValue}>{item.val.value}</span>
+            <span className={clsx(styles.hoverItemValue, valueClass)}>
+              {item.val.value}
+            </span>
           );
         }
         break;
+      }
       case 'separator':
         inner = <hr className={styles.hoverItemSeparator} />;
         break;
