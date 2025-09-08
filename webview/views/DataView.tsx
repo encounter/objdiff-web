@@ -26,7 +26,7 @@ export const {
   useContextMenu: useDataContextMenu,
 } = createContextMenu<DataTooltipContent>();
 
-const DataRow = ({
+const DataCell = ({
   obj,
   symbol,
   row,
@@ -182,7 +182,7 @@ const DataRow = ({
 
   return (
     <div
-      className={clsx(styles.dataRow, anyDiff && styles.diffAny)}
+      className={clsx(styles.dataCell, anyDiff && styles.diffAny)}
       onContextMenu={onContextMenuMemo}
       {...tooltipProps}
     >
@@ -191,10 +191,7 @@ const DataRow = ({
   );
 };
 
-const DataRowMemo = memo(DataRow);
-
-// Row renderer for combined view
-const CombinedRowRenderer = memo(
+const DataRow = memo(
   ({
     index,
     style,
@@ -207,23 +204,9 @@ const CombinedRowRenderer = memo(
   }>) => {
     const { leftObj, leftSymbol, rightObj, rightSymbol } = data;
     return (
-      <div style={style} className={styles.combinedRow}>
-        <div style={{ width: '50%' }}>
-          <DataRowMemo
-            obj={leftObj}
-            symbol={leftSymbol}
-            row={index}
-            column={0}
-          />
-        </div>
-        <div style={{ width: '50%' }}>
-          <DataRowMemo
-            obj={rightObj}
-            symbol={rightSymbol}
-            row={index}
-            column={1}
-          />
-        </div>
+      <div style={style} className={styles.dataRow}>
+        <DataCell obj={leftObj} symbol={leftSymbol} row={index} column={0} />
+        <DataCell obj={rightObj} symbol={rightSymbol} row={index} column={1} />
       </div>
     );
   },
@@ -313,7 +296,7 @@ export const DataList = ({
       onScroll={onScrollMemo}
       initialScrollOffset={initialScrollOffset}
     >
-      {CombinedRowRenderer}
+      {DataRow}
     </FixedSizeList>
   );
 };

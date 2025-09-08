@@ -1,9 +1,17 @@
 .data-row {
+  display: flex;
+  flex-direction: row;
+}
+
+.data-cell {
+  flex: 1 0 0;
   font-family: var(--code-font-family);
+  font-weight: var(--code-font-weight);
   font-size: var(--code-font-size);
+  font-variant-ligatures: var(--code-font-variant-ligatures);
   white-space: pre;
   cursor: default;
-  padding: 0 8px;
+  padding: 0 4px;
   text-wrap: nowrap;
   overflow: hidden;
 }
