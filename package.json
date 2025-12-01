@@ -3,7 +3,7 @@
   "displayName": "objdiff",
   "description": "A local diffing tool for decompilation projects",
   "publisher": "decomp-dev",
-  "version": "3.2.1",
+  "version": "3.4.4",
   "repository": {
     "type": "git",
     "url": "https://github.com/encounter/objdiff-web"
@@ -24,7 +24,7 @@
     "@vscode/codicons": "^0.0.36",
     "clsx": "^2.1.1",
     "memoize-one": "^6.0.0",
-    "objdiff-wasm": "3.2.1",
+    "objdiff-wasm": "=3.4.4",
     "picomatch": "^4.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -135,6 +135,55 @@
               null
             ]
           },
+          "objdiff.demangler": {
+            "type": "string",
+            "description": "Which demangler should be used to demangle each symbol.",
+            "default": "auto",
+            "enum": [
+              "auto",
+              "none",
+              "codewarrior",
+              "itanium",
+              "msvc",
+              "gnu_legacy"
+            ],
+            "enumItemLabels": [
+              "Auto",
+              "None",
+              "CodeWarrior",
+              "Itanium",
+              "MSVC",
+              "GNU g++ (Legacy)"
+            ],
+            "enumDescriptions": [
+              "Try to automatically guess the mangling format.",
+              "Disable demangling.",
+              null,
+              null,
+              null,
+              "Use the old GNU mangling ABI. Used up to g++ 2.9.x"
+            ]
+          },
+          "objdiff.showSymbolSizes": {
+            "type": "string",
+            "description": "Shows symbol sizes in the symbol view.",
+            "default": "off",
+            "enum": [
+              "off",
+              "hex",
+              "decimal"
+            ],
+            "enumItemLabels": [
+              "Off",
+              "Hex",
+              "Decimal"
+            ],
+            "enumDescriptions": [
+              null,
+              null,
+              null
+            ]
+          },
           "objdiff.spaceBetweenArgs": {
             "type": "boolean",
             "description": "Adds a space between arguments in the diff output.",
@@ -161,22 +210,39 @@
             "default": "auto",
             "enum": [
               "auto",
+              "v4",
               "v4t",
+              "v5t",
               "v5te",
+              "v5tej",
+              "v6",
               "v6k"
             ],
             "enumItemLabels": [
               "Auto",
+              "ARMv4",
               "ARMv4T (GBA)",
+              "ARMv5T",
               "ARMv5TE (DS)",
+              "ARMv5TEJ",
+              "ARMv6",
               "ARMv6K (3DS)"
             ],
             "enumDescriptions": [
               null,
               null,
               null,
+              null,
+              null,
+              null,
+              null,
               null
             ]
+          },
+          "objdiff.arm.vfpV2": {
+            "type": "boolean",
+            "description": "Adds floating-point instructions from VFPv2.",
+            "default": true
           },
           "objdiff.arm.unifiedSyntax": {
             "type": "boolean",
@@ -234,16 +300,25 @@
             "enum": [
               "auto",
               "o32",
+              "o64",
               "n32",
-              "n64"
+              "n64",
+              "eabi32",
+              "eabi64"
             ],
             "enumItemLabels": [
               "Auto",
               "O32",
+              "O64",
               "N32",
-              "N64"
+              "N64",
+              "eabi32",
+              "eabi64"
             ],
             "enumDescriptions": [
+              null,
+              null,
+              null,
               null,
               null,
               null,
