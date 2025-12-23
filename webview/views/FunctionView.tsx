@@ -2,7 +2,7 @@ import styles from './FunctionView.module.css';
 
 import clsx from 'clsx';
 import { type diff, display } from 'objdiff-wasm';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import { FixedSizeList, areEqual } from 'react-window';
 import type { ListChildComponentProps, ListOnScrollProps } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
@@ -52,6 +52,7 @@ const AsmCell = ({
   column,
   highlight: highlightState,
   setHighlight,
+  listRef,
 }: {
   obj: diff.ObjectDiff | undefined;
   config: diff.DiffConfig;
@@ -60,6 +61,7 @@ const AsmCell = ({
   column: number;
   highlight: HighlightState;
   setHighlight: (highlight: HighlightState) => void;
+  listRef: React.RefObject<FixedSizeList<ItemData>>;
 }) => {
   const onContextMenu = useInstructionContextMenu();
   const tooltipContent: InstructionTooltipContent = useMemo(
@@ -152,6 +154,10 @@ const AsmCell = ({
         text = t.val.toString(16);
         isToken = true;
         break;
+      case 'branch-arrow':
+        text = ' ~> ';
+        isToken = true;
+        break;
       case 'symbol':
         text = t.val.demangledName || t.val.name;
         isToken = true;
@@ -180,7 +186,9 @@ const AsmCell = ({
           [styles.highlighted]: highlightMatches(highlight, t),
         })}
         onClick={(e) => {
-          if (isToken) {
+          if (t.tag === 'branch-arrow') {
+            listRef.current?.scrollToItem(t.val, 'center');
+          } else if (isToken) {
             setHighlight(updateHighlight(highlightState, t, column));
             e.stopPropagation();
           }
@@ -234,13 +242,22 @@ type ItemData = {
   rightSymbol: display.SymbolDisplay | null;
   highlight: HighlightState;
   setHighlight: (highlight: HighlightState) => void;
+  listRef: React.RefObject<FixedSizeList<ItemData>>;
 };
 
 const AsmRow = memo(
   ({
     index,
     style,
-    data: { result, config, leftSymbol, rightSymbol, highlight, setHighlight },
+    data: {
+      result,
+      config,
+      leftSymbol,
+      rightSymbol,
+      highlight,
+      setHighlight,
+      listRef,
+    },
   }: ListChildComponentProps<ItemData>) => {
     return (
       <div
@@ -265,6 +282,7 @@ const AsmRow = memo(
           column={0}
           highlight={highlight}
           setHighlight={setHighlight}
+          listRef={listRef}
         />
         <AsmCell
           obj={result.right}
@@ -274,6 +292,7 @@ const AsmRow = memo(
           column={1}
           highlight={highlight}
           setHighlight={setHighlight}
+          listRef={listRef}
         />
       </div>
     );
@@ -294,6 +313,7 @@ export const InstructionList = ({
   leftSymbol: display.SymbolDisplay | null;
   rightSymbol: display.SymbolDisplay | null;
 }) => {
+  const listRef = useRef<FixedSizeList<ItemData>>(null);
   const { configProperties, currentUnit } = useExtensionStore(
     useShallow((state) => ({
       configProperties: state.configProperties,
@@ -325,6 +345,7 @@ export const InstructionList = ({
       rightSymbol,
       highlight,
       setHighlight,
+      listRef,
     };
   }, [
     diff,
@@ -355,6 +376,7 @@ export const InstructionList = ({
   );
   return (
     <FixedSizeList
+      ref={listRef}
       height={height}
       itemCount={itemData.itemCount}
       itemSize={itemSize}

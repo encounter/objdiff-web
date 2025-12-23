@@ -189,10 +189,12 @@ export function renderContextItems(
             key={key}
             className={styles.contextMenuItem}
             onClick={() => {
-              navigator.clipboard.writeText(item.val.value).then(
-                () => close(),
-                (e) => console.warn('Failed to copy:', e),
-              );
+              navigator.clipboard
+                .writeText(item.val.copyString || item.val.value)
+                .then(
+                  () => close(),
+                  (e) => console.warn('Failed to copy:', e),
+                );
             }}
           >
             <span className={styles.contextMenuItemLabel}>Copy "</span>
