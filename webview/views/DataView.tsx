@@ -2,16 +2,22 @@ import styles from './DataView.module.css';
 
 import clsx from 'clsx';
 import { type diff, display } from 'objdiff-wasm';
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useRef, useState } from 'react';
 import { FixedSizeList, areEqual } from 'react-window';
 import type { ListChildComponentProps, ListOnScrollProps } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
+import { type DataSpan, dataRowToSpans } from '../../shared/render/data';
 import { createContextMenu } from '../common/ContextMenu';
 import { createTooltip } from '../common/TooltipShared';
 import { useAppStore, useExtensionStore } from '../state';
 import { useFontSize } from '../util/util';
 
-const BYTES_PER_ROW = 16;
+const KIND_CLASSES: Record<DataSpan['kind'], string | undefined> = {
+  none: undefined,
+  replace: styles.replace,
+  delete: styles.delete,
+  insert: styles.insert,
+};
 
 export type DataTooltipContent = {
   column: number;
@@ -55,130 +61,20 @@ const DataCell = ({
     return null;
   }
 
-  const dataRow = display.displayDataRow(obj, symbol.info.id, row);
-  const anyDiff =
-    dataRow.segments.some((s) => s.kind !== 'none') ||
-    dataRow.relocations.some((r) => r.kind !== 'none');
-  const out: React.ReactNode[] = [];
-
-  // Display address
-  out.push(
-    <span key="addr" className={styles.address}>
-      {dataRow.address.toString(16).padStart(8, '0')}:
-    </span>,
+  const { address, hex, ascii, anyDiff } = dataRowToSpans(
+    display.displayDataRow(obj, symbol.info.id, row),
   );
 
-  // Display hex bytes
-  let byteIndex = 0;
-  const hexBytes: React.ReactNode[] = [];
-  const asciiChars: React.ReactNode[] = [];
-
-  for (const diff of dataRow.segments) {
-    let className: string | undefined;
-    switch (diff.kind) {
-      case 'none':
-        break;
-      case 'replace':
-        className = styles.replace;
-        break;
-      case 'delete':
-        className = styles.delete;
-        break;
-      case 'insert':
-        className = styles.insert;
-        break;
-    }
-
-    // Check for relocations that overlap with this diff segment
-    const diffStartAddr = dataRow.address + BigInt(byteIndex);
-    const diffEndAddr = diffStartAddr + BigInt(diff.size);
-    const relocsForDiff = dataRow.relocations.filter((r) => {
-      const relocStart = r.address;
-      const relocEnd = r.address + BigInt(r.size);
-      // Check if relocation overlaps with this diff segment
-      return relocStart < diffEndAddr && relocEnd > diffStartAddr;
-    });
-
-    if (diff.data.length === 0) {
-      // Empty data (deletion on other side - show as blank spaces)
-      for (let i = 0; i < diff.size; i++) {
-        hexBytes.push(<span key={`hex-${byteIndex}`}>{'   '}</span>);
-        asciiChars.push(<span key={`ascii-${byteIndex}`}> </span>);
-        byteIndex++;
-        if (byteIndex % 8 === 0 && byteIndex < BYTES_PER_ROW) {
-          hexBytes.push(<span key={`space-${byteIndex}`}> </span>);
-        }
-      }
-    } else {
-      // Display actual bytes
-      for (let i = 0; i < diff.data.length; i++) {
-        const byte = diff.data[i];
-        const currentAddress = dataRow.address + BigInt(byteIndex);
-        const reloc = relocsForDiff.find(
-          (r) =>
-            r.address <= currentAddress &&
-            currentAddress < r.address + BigInt(r.size),
-        );
-
-        let byteClassName = className;
-        let byteText = byte.toString(16).padStart(2, '0');
-
-        if (reloc) {
-          if (byte === 0) {
-            byteText = '??';
-          }
-          if (reloc.kind !== 'none') {
-            switch (reloc.kind) {
-              case 'replace':
-                byteClassName = styles.replace;
-                break;
-              case 'delete':
-                byteClassName = styles.delete;
-                break;
-              case 'insert':
-                byteClassName = styles.insert;
-                break;
-            }
-          }
-        }
-
-        hexBytes.push(
-          <span key={`hex-${byteIndex}`} className={byteClassName}>
-            {byteText}{' '}
-          </span>,
-        );
-
-        // ASCII representation
-        const c = String.fromCharCode(byte);
-        const asciiChar =
-          c.charCodeAt(0) >= 32 && c.charCodeAt(0) < 127 ? c : '.';
-        asciiChars.push(
-          <span key={`ascii-${byteIndex}`} className={className}>
-            {asciiChar}
-          </span>,
-        );
-
-        byteIndex++;
-        if (byteIndex % 8 === 0 && byteIndex < BYTES_PER_ROW) {
-          hexBytes.push(<span key={`space-${byteIndex}`}> </span>);
-        }
-      }
-    }
-  }
-
-  // Pad to full row width if needed
-  while (byteIndex < BYTES_PER_ROW) {
-    hexBytes.push(<span key={`hex-${byteIndex}`}>{'   '}</span>);
-    asciiChars.push(<span key={`ascii-${byteIndex}`}> </span>);
-    byteIndex++;
-    if (byteIndex % 8 === 0 && byteIndex < BYTES_PER_ROW) {
-      hexBytes.push(<span key={`space-${byteIndex}`}> </span>);
-    }
-  }
-
-  out.push(<span key="hex">{hexBytes}</span>);
-  out.push(<span key="sep"> </span>);
-  out.push(<span key="ascii">{asciiChars}</span>);
+  const renderSpans = (spans: DataSpan[], prefix: string) =>
+    spans.map((span, index) => (
+      <span
+        // biome-ignore lint/suspicious/noArrayIndexKey: spans are positional
+        key={`${prefix}-${index}`}
+        className={KIND_CLASSES[span.kind]}
+      >
+        {span.text}
+      </span>
+    ));
 
   return (
     <div
@@ -186,9 +82,22 @@ const DataCell = ({
       onContextMenu={onContextMenuMemo}
       {...tooltipProps}
     >
-      {out}
+      <span className={styles.address}>{address}</span>
+      <span>{renderSpans(hex, 'hex')}</span>
+      <span> </span>
+      <span>{renderSpans(ascii, 'ascii')}</span>
     </div>
   );
+};
+
+type DataRowData = {
+  leftObj: diff.ObjectDiff | undefined;
+  leftSymbol: display.SymbolDisplay | null;
+  rightObj: diff.ObjectDiff | undefined;
+  rightSymbol: display.SymbolDisplay | null;
+  splitRatio: number;
+  onDividerMouseDown: (e: React.MouseEvent) => void;
+  onColMouseDown: (side: 'left' | 'right') => void;
 };
 
 const DataRow = memo(
@@ -196,17 +105,25 @@ const DataRow = memo(
     index,
     style,
     data,
-  }: ListChildComponentProps<{
-    leftObj: diff.ObjectDiff | undefined;
-    leftSymbol: display.SymbolDisplay | null;
-    rightObj: diff.ObjectDiff | undefined;
-    rightSymbol: display.SymbolDisplay | null;
-  }>) => {
-    const { leftObj, leftSymbol, rightObj, rightSymbol } = data;
+  }: ListChildComponentProps<DataRowData>) => {
+    const { leftObj, leftSymbol, rightObj, rightSymbol, splitRatio, onDividerMouseDown, onColMouseDown } = data;
     return (
       <div style={style} className={styles.dataRow}>
-        <DataCell obj={leftObj} symbol={leftSymbol} row={index} column={0} />
-        <DataCell obj={rightObj} symbol={rightSymbol} row={index} column={1} />
+        <div
+          className={styles.colLeft}
+          style={{ flex: `0 0 ${splitRatio * 100}%` }}
+          onMouseDown={() => onColMouseDown('left')}
+        >
+          <DataCell obj={leftObj} symbol={leftSymbol} row={index} column={0} />
+        </div>
+        <div className={styles.divider} onMouseDown={onDividerMouseDown} />
+        <div
+          className={styles.colRight}
+          style={{ flex: '1 1 0' }}
+          onMouseDown={() => onColMouseDown('right')}
+        >
+          <DataCell obj={rightObj} symbol={rightSymbol} row={index} column={1} />
+        </div>
       </div>
     );
   },
@@ -226,6 +143,55 @@ export const DataList = ({
   leftSymbol: display.SymbolDisplay | null;
   rightSymbol: display.SymbolDisplay | null;
 }) => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [splitRatio, setSplitRatio] = useState(0.5);
+  const splitRatioRef = useRef(splitRatio);
+  splitRatioRef.current = splitRatio;
+
+  const cleanupSelectingRef = useRef<(() => void) | null>(null);
+
+  const onColMouseDown = useCallback((side: 'left' | 'right') => {
+    const container = containerRef.current;
+    if (!container) return;
+    cleanupSelectingRef.current?.();
+    container.dataset.selecting = side;
+    const onNextMouseDown = () => {
+      delete container.dataset.selecting;
+      document.removeEventListener('mousedown', onNextMouseDown, true);
+      cleanupSelectingRef.current = null;
+    };
+    cleanupSelectingRef.current = () => {
+      document.removeEventListener('mousedown', onNextMouseDown, true);
+    };
+    document.addEventListener('mousedown', onNextMouseDown, true);
+  }, []);
+
+  const onDividerMouseDown = useCallback(
+    (e: React.MouseEvent) => {
+      e.preventDefault();
+      const startX = e.clientX;
+      const startRatio = splitRatioRef.current;
+      document.body.style.cursor = 'col-resize';
+      document.body.style.userSelect = 'none';
+      const onMouseMove = (ev: MouseEvent) => {
+        const newRatio = Math.max(
+          0.15,
+          Math.min(0.85, startRatio + (ev.clientX - startX) / width),
+        );
+        setSplitRatio(newRatio);
+      };
+      const onMouseUp = () => {
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+    [width],
+  );
+
   const { currentUnit } = useExtensionStore(
     useShallow((state) => ({
       currentUnit: state.currentUnit,
@@ -259,8 +225,11 @@ export const DataList = ({
       leftSymbol,
       rightObj: diff.right,
       rightSymbol,
+      splitRatio,
+      onDividerMouseDown,
+      onColMouseDown,
     }),
-    [diff, leftSymbol, rightSymbol],
+    [diff, leftSymbol, rightSymbol, splitRatio, onDividerMouseDown, onColMouseDown],
   );
 
   const currentUnitName = currentUnit?.name || '';
@@ -287,17 +256,19 @@ export const DataList = ({
   }
 
   return (
-    <FixedSizeList
-      height={height}
-      width={width}
-      itemCount={rowCount}
-      itemSize={fontSize * 1.5}
-      itemData={itemData}
-      onScroll={onScrollMemo}
-      initialScrollOffset={initialScrollOffset}
-    >
-      {DataRow}
-    </FixedSizeList>
+    <div ref={containerRef} className={styles.dataList}>
+      <FixedSizeList<DataRowData>
+        height={height}
+        width={width}
+        itemCount={rowCount}
+        itemSize={fontSize * 1.5}
+        itemData={itemData}
+        onScroll={onScrollMemo}
+        initialScrollOffset={initialScrollOffset}
+      >
+        {DataRow}
+      </FixedSizeList>
+    </div>
   );
 };
 

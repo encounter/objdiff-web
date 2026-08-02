@@ -19,6 +19,7 @@ const App = () => {
     leftObject,
     rightObject,
     config,
+    configError,
     ready,
   } = useExtensionStore(
     useShallow((state) => ({
@@ -30,6 +31,7 @@ const App = () => {
       leftObject: state.leftObject,
       rightObject: state.rightObject,
       config: state.projectConfig,
+      configError: state.configError,
       ready: state.ready,
     })),
   );
@@ -102,12 +104,27 @@ const App = () => {
           </div>
         );
       }
-      return config ? (
-        <UnitsView />
-      ) : (
+      if (config) {
+        return <UnitsView />;
+      }
+      return (
         <div className="content">
           <h1>objdiff</h1>
-          <p>No configuration loaded.</p>
+          {configError ? (
+            <>
+              <p>Couldn't load the project configuration.</p>
+              <pre className="error">{configError}</pre>
+              <p>
+                The dev server looks for <code>objdiff.json</code> in{' '}
+                <code>OBJDIFF_PROJECT_ROOT</code> (defaults to{' '}
+                <code>../prime</code>). Point it at your decomp project and
+                restart:
+              </p>
+              <pre>OBJDIFF_PROJECT_ROOT=/path/to/project pnpm web:dev</pre>
+            </>
+          ) : (
+            <p>No configuration loaded.</p>
+          )}
         </div>
       );
     case 'settings':

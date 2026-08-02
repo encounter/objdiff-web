@@ -3,6 +3,25 @@
   flex-direction: row;
 }
 
+.col-left,
+.col-right {
+  overflow: hidden;
+}
+
+.data-list {
+  flex: 1 1 auto;
+}
+
+.data-list[data-selecting='left'] .col-right {
+  user-select: none;
+  pointer-events: none;
+}
+
+.data-list[data-selecting='right'] .col-left {
+  user-select: none;
+  pointer-events: none;
+}
+
 .data-cell {
   flex: 1 0 0;
   font-family: var(--code-font-family);
@@ -14,6 +33,27 @@
   padding: 0 4px;
   text-wrap: nowrap;
   overflow: hidden;
+}
+
+.divider {
+  flex: 0 0 5px;
+  background: transparent;
+  cursor: col-resize;
+  position: relative;
+}
+
+.divider::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background-color: var(--panel-separator);
+}
+
+.divider:hover::before {
+  background-color: var(--focus-border-color);
 }
 
 .combined-row {

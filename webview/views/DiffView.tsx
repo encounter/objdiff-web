@@ -11,18 +11,23 @@ import {
   type ContextMenuRender,
   renderContextItems,
 } from '../common/ContextMenu';
+import PercentBadge from '../common/PercentBadge';
+import SearchBar from '../common/SearchBar';
+import Sidebar, { useSidebarToggle } from '../common/Sidebar';
+import { useSymbolPalette } from '../common/SymbolPalette';
 import type { TooltipCallback } from '../common/TooltipShared';
 import type { DiffOutput } from '../diff';
 import {
+  type SearchOptions,
   type Side,
   type SymbolRefByName,
   buildDiffConfig,
+  defaultSearchOptions,
   runBuild,
   setCurrentUnit,
   useAppStore,
   useExtensionStore,
 } from '../state';
-import { percentClass } from '../util/util';
 import {
   DataContextMenuProvider,
   DataList,
@@ -37,6 +42,7 @@ import {
 } from './FunctionView';
 import {
   SymbolContextMenuProvider,
+  type SymbolCounts,
   SymbolList,
   SymbolTooltip,
   type SymbolTooltipContent,
@@ -375,6 +381,59 @@ const DiffView = ({
 
   const [showMappedSymbols, setShowMappedSymbols] = useState<boolean>(false);
 
+  // The symbol lists own the filtering, but the search bar lives in the header,
+  // so counts and regex errors are reported back up here.
+  const [symbolCounts, setSymbolCounts] = useState<
+    Record<Side, SymbolCounts & { error: string | null }>
+  >({
+    left: { shown: 0, total: 0, error: null },
+    right: { shown: 0, total: 0, error: null },
+  });
+  const onCounts = useCallback(
+    (side: Side, counts: SymbolCounts, error: string | null) =>
+      setSymbolCounts((prev) =>
+        prev[side].shown === counts.shown &&
+        prev[side].total === counts.total &&
+        prev[side].error === error
+          ? prev
+          : { ...prev, [side]: { ...counts, error } },
+      ),
+    [],
+  );
+
+  const { palette } = useSymbolPalette(result);
+  const [sidebarCollapsed, toggleSidebar] = useSidebarToggle();
+
+  // With a symbol open both columns show its disassembly, so the symbol list
+  // has nowhere to live. Keeping it in a sidebar means you can jump between
+  // functions without going back a screen first.
+  const symbolIsOpen =
+    leftColumnView.type === 'asm' ||
+    leftColumnView.type === 'data' ||
+    rightColumnView.type === 'asm' ||
+    rightColumnView.type === 'data';
+  const sidebarSide: Side =
+    leftColumnView.type === 'asm' || leftColumnView.type === 'data'
+      ? 'left'
+      : 'right';
+
+  const mainContent = (
+    <AutoSizer className={styles.content}>
+      {({ height, width }) => (
+        <DiffViewContent
+          result={result}
+          height={height}
+          width={width}
+          leftColumnView={leftColumnView}
+          rightColumnView={rightColumnView}
+          showMappedSymbols={showMappedSymbols}
+          showHiddenSymbols={false} // TODO
+          onCounts={onCounts}
+        />
+      )}
+    </AutoSizer>
+  );
+
   return (
     <>
       <DiffViewHeader
@@ -385,24 +444,33 @@ const DiffView = ({
         rightColumnView={rightColumnView}
         showMappedSymbols={showMappedSymbols}
         setShowMappedSymbols={setShowMappedSymbols}
+        symbolCounts={symbolCounts}
+        symbolIsOpen={symbolIsOpen}
       />
+      {palette}
       <div className={styles.content}>
         <SymbolContextMenuProvider render={symbolContextMenuRender}>
           <InstructionContextMenuProvider render={instructionContextMenuRender}>
             <DataContextMenuProvider render={dataContextMenuRender}>
-              <AutoSizer className={styles.content}>
-                {({ height, width }) => (
-                  <DiffViewContent
-                    result={result}
-                    height={height}
-                    width={width}
-                    leftColumnView={leftColumnView}
-                    rightColumnView={rightColumnView}
-                    showMappedSymbols={showMappedSymbols}
-                    showHiddenSymbols={false} // TODO
-                  />
-                )}
-              </AutoSizer>
+              {symbolIsOpen && result.diff ? (
+                <Sidebar
+                  title={<span className={styles.sidebarTitle}>Symbols</span>}
+                  collapsed={sidebarCollapsed}
+                  onToggle={toggleSidebar}
+                  content={mainContent}
+                >
+                  {(width) => (
+                    <SymbolSidebar
+                      result={result}
+                      side={sidebarSide}
+                      width={width}
+                      showMappedSymbols={showMappedSymbols}
+                    />
+                  )}
+                </Sidebar>
+              ) : (
+                mainContent
+              )}
             </DataContextMenuProvider>
           </InstructionContextMenuProvider>
         </SymbolContextMenuProvider>
@@ -434,6 +502,7 @@ const DiffViewHeader = ({
   rightColumnView,
   showMappedSymbols,
   setShowMappedSymbols,
+  symbolCounts,
 }: {
   result: DiffOutput;
   leftSymbolRef: SymbolRefByName | null;
@@ -442,6 +511,9 @@ const DiffViewHeader = ({
   rightColumnView: ColumnView;
   showMappedSymbols: boolean;
   setShowMappedSymbols: (value: boolean) => void;
+  symbolCounts: Record<Side, SymbolCounts & { error: string | null }>;
+  /** The filter moves into the sidebar once a symbol is open. */
+  symbolIsOpen: boolean;
 }) => {
   const { buildRunning, currentUnit, hasProjectConfig } = useExtensionStore(
     useShallow((state) => ({
@@ -453,8 +525,10 @@ const DiffViewHeader = ({
   const currentUnitName = currentUnit?.name || '';
   const {
     search,
+    searchOptions,
     setUnitSectionCollapsed,
     setUnitSearch,
+    setUnitSearchOptions,
     setCurrentView,
     setSelectedSymbol,
     setUnitMapping,
@@ -463,8 +537,10 @@ const DiffViewHeader = ({
       const unit = state.getUnitState(currentUnitName);
       return {
         search: unit.search,
+        searchOptions: unit.searchOptions ?? defaultSearchOptions,
         setUnitSectionCollapsed: state.setUnitSectionCollapsed,
         setUnitSearch: state.setUnitSearch,
+        setUnitSearchOptions: state.setUnitSearchOptions,
         setCurrentView: state.setCurrentView,
         setSelectedSymbol: state.setSelectedSymbol,
         setUnitMapping: state.setUnitMapping,
@@ -531,9 +607,14 @@ const DiffViewHeader = ({
   );
 
   const onSearchChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) =>
-      setUnitSearch(currentUnitName, e.target.value),
+    (value: string | null) => setUnitSearch(currentUnitName, value),
     [currentUnitName, setUnitSearch],
+  );
+
+  const onSearchOptionsChange = useCallback(
+    (options: Partial<SearchOptions>) =>
+      setUnitSearchOptions(currentUnitName, options),
+    [currentUnitName, setUnitSearchOptions],
   );
 
   const onSettingsClick = useCallback(() => {
@@ -568,12 +649,22 @@ const DiffViewHeader = ({
     </div>
   );
 
+  // Both columns filter identically, so report whichever side actually has
+  // symbols to count.
+  const counts =
+    symbolCounts.left.total >= symbolCounts.right.total
+      ? symbolCounts.left
+      : symbolCounts.right;
+
   const filterRow = (
-    <input
-      type="text"
-      placeholder="Filter symbols"
-      value={search || ''}
-      onChange={onSearchChange}
+    <SearchBar
+      search={search}
+      options={searchOptions}
+      resultCount={counts.shown}
+      totalCount={counts.total}
+      error={counts.error}
+      onSearchChange={onSearchChange}
+      onOptionsChange={onSearchOptionsChange}
     />
   );
 
@@ -679,10 +770,12 @@ const DiffViewHeader = ({
         <div className={headerStyles.row}>
           {matchPercent !== undefined && (
             <>
-              <span
-                className={clsx(headerStyles.label, percentClass(matchPercent))}
-              >
-                {Math.floor(matchPercent).toFixed(0)}%
+              <span className={headerStyles.label}>
+                <PercentBadge
+                  percent={matchPercent}
+                  size="large"
+                  decimals={2}
+                />
               </span>
               {' | '}
             </>
@@ -701,6 +794,98 @@ const DiffViewHeader = ({
             <button onClick={changeBase}>Change base</button>
           )}
         </div>
+      </div>
+    </div>
+  );
+};
+
+/**
+ * The symbol list plus its filter, shown beside an open function diff.
+ *
+ * It has its own AutoSizer because the sidebar can be resized independently of
+ * the window.
+ */
+const SymbolSidebar = ({
+  result,
+  side,
+  width,
+  showMappedSymbols,
+}: {
+  result: DiffOutput;
+  side: Side;
+  width: number;
+  showMappedSymbols: boolean;
+}) => {
+  const currentUnitName = useExtensionStore(
+    (state) => state.currentUnit?.name ?? '',
+  );
+  const { search, searchOptions, setUnitSearch, setUnitSearchOptions } =
+    useAppStore(
+      useShallow((state) => {
+        const unit = state.getUnitState(currentUnitName);
+        return {
+          search: unit.search,
+          searchOptions: unit.searchOptions ?? defaultSearchOptions,
+          setUnitSearch: state.setUnitSearch,
+          setUnitSearchOptions: state.setUnitSearchOptions,
+        };
+      }),
+    );
+  const [counts, setCounts] = useState<SymbolCounts & { error: string | null }>(
+    { shown: 0, total: 0, error: null },
+  );
+  const onCounts = useCallback(
+    (_side: Side, next: SymbolCounts, error: string | null) =>
+      setCounts((prev) =>
+        prev.shown === next.shown &&
+        prev.total === next.total &&
+        prev.error === error
+          ? prev
+          : { ...next, error },
+      ),
+    [],
+  );
+  const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
+  const [hoverSymbols, setHoverSymbols] = useState<
+    [number | null, number | null]
+  >([null, null]);
+
+  return (
+    <div className={styles.sidebarInner}>
+      <div className={styles.sidebarSearch}>
+        <SearchBar
+          search={search}
+          options={searchOptions}
+          resultCount={counts.shown}
+          totalCount={counts.total}
+          error={counts.error}
+          onSearchChange={(value) => setUnitSearch(currentUnitName, value)}
+          onOptionsChange={(options) =>
+            setUnitSearchOptions(currentUnitName, options)
+          }
+          hint={null}
+        />
+      </div>
+      <div className={styles.sidebarList}>
+        <AutoSizer>
+          {({ height }) => (
+            <SymbolList
+              height={height}
+              width={width}
+              fullWidth
+              side={side}
+              result={result}
+              mappingSymbol={null}
+              showMappedSymbols={showMappedSymbols}
+              showHiddenSymbols={false}
+              highlightedPath={highlightedPath}
+              setHighlightedPath={setHighlightedPath}
+              hoverSymbols={hoverSymbols}
+              setHoverSymbols={setHoverSymbols}
+              onCounts={onCounts}
+            />
+          )}
+        </AutoSizer>
       </div>
     </div>
   );
@@ -780,6 +965,7 @@ const DiffViewContent = ({
   rightColumnView,
   showMappedSymbols,
   showHiddenSymbols,
+  onCounts,
 }: {
   result: DiffOutput;
   height: number;
@@ -788,6 +974,7 @@ const DiffViewContent = ({
   rightColumnView: ColumnView;
   showMappedSymbols: boolean;
   showHiddenSymbols: boolean;
+  onCounts: (side: Side, counts: SymbolCounts, error: string | null) => void;
 }) => {
   // Shared symbols view state
   const [highlightedPath, setHighlightedPath] = useState<string | null>(null);
@@ -837,6 +1024,7 @@ const DiffViewContent = ({
         setHighlightedPath={setHighlightedPath}
         hoverSymbols={hoverSymbols}
         setHoverSymbols={setHoverSymbols}
+        onCounts={onCounts}
       />
     );
   } else if (leftColumnView.type === 'asm') {
@@ -885,6 +1073,7 @@ const DiffViewContent = ({
         setHighlightedPath={setHighlightedPath}
         hoverSymbols={hoverSymbols}
         setHoverSymbols={setHoverSymbols}
+        onCounts={onCounts}
       />
     );
   } else if (rightColumnView.type === 'asm') {

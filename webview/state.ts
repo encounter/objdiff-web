@@ -2,13 +2,13 @@ import memoizeOne from 'memoize-one';
 import { diff } from 'objdiff-wasm';
 import { subscribeWithSelector } from 'zustand/middleware';
 import { create } from 'zustand/react';
-import {
-  type ConfigProperties,
-  type ConfigPropertyValue,
-  type ProjectConfig,
-  type Unit,
-  getModifiedConfigProperties,
+import type {
+  ConfigProperties,
+  ConfigPropertyValue,
+  ProjectConfig,
+  Unit,
 } from '../shared/config';
+import { applyConfigProperties } from '../shared/diff-config';
 import type { BuildStatus, SetCurrentUnitMessage } from '../shared/messages';
 import type { InboundMessage, OutboundMessage } from '../shared/messages';
 import { mockVsCode } from './mock';
@@ -37,12 +37,29 @@ export type Side = 'left' | 'right';
 export type UnitScrollOffsets = { [key in Side]: number };
 export type UnitCollapsedSections = { [key in Side]: Record<string, boolean> };
 
+/** How the search query is interpreted. */
+export type SearchMode = 'fuzzy' | 'substring' | 'regex';
+/** Which symbols are shown, by match percentage. */
+export type PercentFilter = 'all' | 'incomplete' | 'complete';
+
+export type SearchOptions = {
+  mode: SearchMode;
+  caseSensitive: boolean;
+  percentFilter: PercentFilter;
+};
+
 export type UnitState = {
   scrollOffsets: UnitScrollOffsets;
   symbolScrollOffsets: Record<string, number>;
   collapsedSections: UnitCollapsedSections;
   search: string | null;
+  searchOptions: SearchOptions;
   mappings: Record<string, string>;
+};
+export const defaultSearchOptions: SearchOptions = {
+  mode: 'fuzzy',
+  caseSensitive: false,
+  percentFilter: 'all',
 };
 const defaultUnitState: UnitState = {
   scrollOffsets: { left: 0, right: 0 },
@@ -52,6 +69,7 @@ const defaultUnitState: UnitState = {
     right: {},
   },
   search: null,
+  searchOptions: defaultSearchOptions,
   mappings: {},
 };
 
@@ -60,6 +78,8 @@ export interface AppState {
   leftSymbol: SymbolRefByName | null;
   rightSymbol: SymbolRefByName | null;
   unitsScrollOffset: number;
+  unitsSearch: string | null;
+  unitsSearchOptions: SearchOptions;
   unitStates: Record<string, UnitState>;
   highlight: HighlightState;
   currentView: CurrentView;
@@ -87,7 +107,10 @@ export interface AppState {
     collapsed: boolean,
   ) => void;
   setUnitSearch: (unit: string, search: string | null) => void;
+  setUnitSearchOptions: (unit: string, options: Partial<SearchOptions>) => void;
   setUnitsScrollOffset: (offset: number) => void;
+  setUnitsSearch: (search: string | null) => void;
+  setUnitsSearchOptions: (options: Partial<SearchOptions>) => void;
   setUnitMapping: (
     unit: string,
     left: string | null | undefined,
@@ -116,6 +139,8 @@ export const useAppStore = create<AppState>((set) => {
     leftSymbol: null,
     rightSymbol: null,
     unitsScrollOffset: 0,
+    unitsSearch: null,
+    unitsSearchOptions: defaultSearchOptions,
     unitStates: {},
     highlight: {
       left: null,
@@ -163,7 +188,23 @@ export const useAppStore = create<AppState>((set) => {
         ...state,
         search,
       })),
+    setUnitSearchOptions: (unit, options) =>
+      setUnitState(unit, (state) => ({
+        ...state,
+        searchOptions: {
+          ...(state.searchOptions ?? defaultSearchOptions),
+          ...options,
+        },
+      })),
     setUnitsScrollOffset: (offset) => set({ unitsScrollOffset: offset }),
+    setUnitsSearch: (unitsSearch) => set({ unitsSearch }),
+    setUnitsSearchOptions: (options) =>
+      set((state) => ({
+        unitsSearchOptions: {
+          ...(state.unitsSearchOptions ?? defaultSearchOptions),
+          ...options,
+        },
+      })),
     setUnitMapping: (unit, left, right) =>
       setUnitState(unit, (state) => {
         const newMappings = Object.fromEntries(
@@ -203,6 +244,7 @@ export type ExtensionState = {
   rightObject: ArrayBuffer | null;
   projectConfig: ProjectConfig | null;
   diffLabel: string | null;
+  configError: string | null;
   ready: boolean;
 };
 export const useExtensionStore = create(
@@ -217,6 +259,7 @@ export const useExtensionStore = create(
     rightObject: null,
     projectConfig: null,
     diffLabel: null,
+    configError: null,
     ready: false,
   })),
 );
@@ -274,20 +317,9 @@ subscriptions.push(
         const k = key as keyof AppState;
         if (k === 'highlight') {
           serialized.highlight = serializeHighlightState(state.highlight);
-        } else if (
-          k !== 'getUnitState' &&
-          k !== 'setSelectedSymbol' &&
-          k !== 'setSymbolScrollOffset' &&
-          k !== 'setUnitScrollOffset' &&
-          k !== 'setUnitSectionCollapsed' &&
-          k !== 'setUnitSearch' &&
-          k !== 'setUnitsScrollOffset' &&
-          k !== 'setHighlight' &&
-          k !== 'setCurrentView' &&
-          k !== 'setCollapsedUnit' &&
-          k !== 'setUnitMapping'
-        ) {
-          serialized[k] = state[k] as any;
+        } else if (typeof state[k] !== 'function') {
+          // Everything that isn't an action is plain data and round-trips.
+          (serialized as Record<string, unknown>)[k] = state[k];
         }
       }
       vsCode.setState(serialized as AppStateSerialized);
@@ -326,16 +358,8 @@ export function openSettings(): void {
 }
 
 export const buildDiffConfig = memoizeOne(
-  (configProperties: ConfigProperties): diff.DiffConfig => {
-    const config = new diff.DiffConfig();
-    const props = getModifiedConfigProperties(configProperties);
-    for (const key in props) {
-      if (props[key] != null) {
-        config.setProperty(key, props[key].toString());
-      }
-    }
-    return config;
-  },
+  (configProperties: ConfigProperties): diff.DiffConfig =>
+    applyConfigProperties(new diff.DiffConfig(), configProperties),
 );
 
 const handleMessage = (event: MessageEvent) => {

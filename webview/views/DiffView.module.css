@@ -11,6 +11,30 @@
   overflow: auto;
 }
 
+.sidebar-title {
+  font-weight: 600;
+}
+
+.sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+.sidebar-search {
+  flex: 0 0 auto;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--panel-separator);
+}
+
+.sidebar-list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .no-object {
   color: var(--color-blue);
 

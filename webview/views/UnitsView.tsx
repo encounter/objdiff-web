@@ -8,8 +8,13 @@ import {
 } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
 import type { ProjectConfig, Unit } from '../../shared/config';
+import { fuzzyMatch } from '../../shared/fuzzy';
 import headerStyles from '../common/Header.module.css';
+import SearchBar from '../common/SearchBar';
+import SymbolSearchResults from '../common/SymbolSearchResults';
 import {
+  type SearchOptions,
+  defaultSearchOptions,
   quickPickUnit,
   setCurrentUnit,
   useAppStore,
@@ -57,24 +62,102 @@ const createItemData = memoizeOne(
     collapsedUnits: Record<string, boolean>,
     highlightedPath: string | null,
     setHighlightedPath: (id: string | null) => void,
-  ): SimpleTreeData<Unit> => {
-    return buildSimpleTree(
-      config?.units ?? [],
-      (unit) => unit.name || '',
-      collapsedUnits,
-      highlightedPath,
-      setHighlightedPath,
-    );
+    search: string | null,
+    options: SearchOptions,
+  ): SimpleTreeData<Unit> & { total: number; error: string | null } => {
+    const all = config?.units ?? [];
+    const { units, error } = filterUnits(all, search, options);
+    return {
+      ...buildSimpleTree(
+        units,
+        (unit) => unit.name || '',
+        // Collapsed folders would hide matches, so expand everything while
+        // a filter is active.
+        search ? {} : collapsedUnits,
+        highlightedPath,
+        setHighlightedPath,
+      ),
+      total: all.length,
+      error,
+    };
   },
 );
 
+/** Filter the unit list by path, using the same matching modes as symbols. */
+const filterUnits = (
+  units: Unit[],
+  search: string | null,
+  options: SearchOptions,
+): { units: Unit[]; error: string | null } => {
+  if (!search) {
+    return { units, error: null };
+  }
+  if (options.mode === 'regex') {
+    let regex: RegExp;
+    try {
+      regex = new RegExp(search, options.caseSensitive ? '' : 'i');
+    } catch (e) {
+      return {
+        units,
+        error:
+          e instanceof Error
+            ? e.message.replace(/^Invalid regular expression:\s*/, '')
+            : String(e),
+      };
+    }
+    return {
+      units: units.filter((u) => regex.test(u.name || '')),
+      error: null,
+    };
+  }
+  if (options.mode === 'substring') {
+    const needle = options.caseSensitive ? search : search.toLowerCase();
+    return {
+      units: units.filter((u) => {
+        const name = options.caseSensitive
+          ? u.name || ''
+          : (u.name || '').toLowerCase();
+        return name.includes(needle);
+      }),
+      error: null,
+    };
+  }
+  // Fuzzy, but anchored: either the query appears literally somewhere in the
+  // path, or it fuzzy-matches the file name itself. Fuzzy-matching the whole
+  // path would drag in every file whose directory happens to contain the
+  // query's letters in order — searching "vehicle.cpp" would return
+  // "vehicles/heli.cpp" and bury the file actually being looked for.
+  const needle = search.toLowerCase();
+  const keep = units.filter((unit) => {
+    const name = (unit.name || '').toLowerCase();
+    if (name.includes(needle)) {
+      return true;
+    }
+    const basename = name.slice(name.lastIndexOf('/') + 1);
+    return fuzzyMatch(search, basename) != null;
+  });
+  return { units: keep, error: null };
+};
+
 const UnitsView = () => {
   const config = useExtensionStore((state) => state.projectConfig);
-  const { collapsedUnits, setCurrentView, setUnitsScrollOffset } = useAppStore(
+  const {
+    collapsedUnits,
+    search,
+    searchOptions,
+    setCurrentView,
+    setUnitsScrollOffset,
+    setUnitsSearch,
+    setUnitsSearchOptions,
+  } = useAppStore(
     useShallow((state) => ({
       collapsedUnits: state.collapsedUnits,
+      search: state.unitsSearch,
+      searchOptions: state.unitsSearchOptions ?? defaultSearchOptions,
       setCurrentView: state.setCurrentView,
       setUnitsScrollOffset: state.setUnitsScrollOffset,
+      setUnitsSearch: state.setUnitsSearch,
+      setUnitsSearchOptions: state.setUnitsSearchOptions,
     })),
   );
   const initialScrollOffset = useMemo(
@@ -88,6 +171,8 @@ const UnitsView = () => {
     collapsedUnits,
     highlightedPath,
     setHighlightedPath,
+    search,
+    searchOptions,
   );
   return (
     <>
@@ -103,32 +188,56 @@ const UnitsView = () => {
             </button>
           </div>
           <div className={headerStyles.row}>
-            <span className={headerStyles.label}>
-              {itemData.leafCount} unit{itemData.leafCount === 1 ? '' : 's'}
-            </span>
+            <SearchBar
+              search={search}
+              options={searchOptions}
+              resultCount={itemData.leafCount}
+              totalCount={itemData.total}
+              error={itemData.error}
+              onSearchChange={setUnitsSearch}
+              onOptionsChange={setUnitsSearchOptions}
+              placeholder="Filter files"
+              noun="units"
+              showPercentFilter={false}
+              hint={null}
+            />
           </div>
         </div>
       </div>
       <div className={styles.units}>
-        <AutoSizer>
-          {({ height, width }) => (
-            <FixedSizeList
-              height={height}
-              itemCount={itemData.nodes.length}
-              itemSize={itemSize}
-              width={width}
-              itemData={itemData}
-              overscanCount={20}
-              onScroll={(e) => {
-                setUnitsScrollOffset(e.scrollOffset);
-              }}
-              initialScrollOffset={initialScrollOffset}
-            >
-              {UnitRow}
-            </FixedSizeList>
-          )}
-        </AutoSizer>
+        {itemData.nodes.length === 0 ? (
+          <div className={styles.emptyState}>
+            <span>
+              No file matches <code>{search}</code>
+            </span>
+            <button type="button" onClick={() => setUnitsSearch(null)}>
+              Clear filter
+            </button>
+          </div>
+        ) : (
+          <AutoSizer key={search ?? ''}>
+            {({ height, width }) => (
+              <FixedSizeList
+                height={height}
+                itemCount={itemData.nodes.length}
+                itemSize={itemSize}
+                width={width}
+                itemData={itemData}
+                overscanCount={20}
+                onScroll={(e) => {
+                  setUnitsScrollOffset(e.scrollOffset);
+                }}
+                initialScrollOffset={initialScrollOffset}
+              >
+                {UnitRow}
+              </FixedSizeList>
+            )}
+          </AutoSizer>
+        )}
       </div>
+      {search && (
+        <SymbolSearchResults query={search} units={config?.units ?? []} />
+      )}
     </>
   );
 };

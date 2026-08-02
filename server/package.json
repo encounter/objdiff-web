@@ -1,0 +1,4 @@
+{
+  "//": "objdiff-wasm uses top-level await, so it can only be loaded from an ES module. This marks the server (and only the server) as ESM.",
+  "type": "module"
+}

@@ -9,6 +9,7 @@ import {
 import { pluginReact } from '@rsbuild/plugin-react';
 import { pluginTypeCheck } from '@rsbuild/plugin-type-check';
 import { pluginTypedCSSModules } from '@rsbuild/plugin-typed-css-modules';
+import { readDesktopConfig } from './server/desktop-config';
 
 // Standalone web configuration.
 const webConfig: RsbuildConfig = {
@@ -30,6 +31,22 @@ const webConfig: RsbuildConfig = {
       },
     ],
   },
+  // Opt in with OBJDIFF_API_PROXY=1 to forward /api to the standalone server
+  // (`pnpm api:dev`) so the web UI and the API share an origin. Off by default:
+  // the proxy would otherwise swallow /api/get and fail when the API server
+  // isn't running, and the mock middleware below already serves the web UI.
+  ...(process.env.OBJDIFF_API_PROXY
+    ? {
+        server: {
+          proxy: {
+            '/api': {
+              target: `http://localhost:${process.env.OBJDIFF_API_PORT ?? 3001}`,
+              changeOrigin: true,
+            },
+          },
+        },
+      }
+    : {}),
 };
 
 // VS Code extension configuration.
@@ -124,7 +141,16 @@ if (buildType === 'extension') {
 }
 export default defineConfig(config);
 
-const PROJECT_ROOT = '../prime';
+// Root of the decomp project served to the web UI during development.
+// Point OBJDIFF_PROJECT_ROOT at your own project to try it out.
+// Same resolution as the API server: the env var (trimmed, because
+// `set VAR=value && cmd` on Windows captures the trailing space), then whatever
+// project the objdiff desktop app last had open, then ../prime.
+const PROJECT_ROOT = path.resolve(
+  process.env.OBJDIFF_PROJECT_ROOT?.trim() ||
+    readDesktopConfig()?.projectDir ||
+    '../prime',
+);
 
 // Mock API middleware for development.
 const apiMiddleware: RequestHandler = (req, res, next) => {
@@ -142,8 +168,11 @@ const apiMiddleware: RequestHandler = (req, res, next) => {
   if (url.pathname === '/api/get') {
     const file = url.searchParams.get('path');
     if (file) {
-      const filepath = path.join(PROJECT_ROOT, file);
-      if (filepath.startsWith(PROJECT_ROOT)) {
+      const filepath = path.resolve(PROJECT_ROOT, file);
+      // Compare via path.relative so that a sibling directory sharing a name
+      // prefix (e.g. ../prime-secrets) can't be read.
+      const rel = path.relative(PROJECT_ROOT, filepath);
+      if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
         return sendFile(res, filepath, 'application/octet-stream');
       }
     }

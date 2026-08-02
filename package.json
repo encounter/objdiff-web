@@ -12,8 +12,11 @@
   "scripts": {
     "check": "biome check --write",
     "format": "biome format --write",
+    "dev": "node scripts/dev.mjs",
     "web:build": "rsbuild build",
     "web:dev": "rsbuild dev",
+    "api:dev": "tsx watch server/index.ts",
+    "api:start": "tsx server/index.ts",
     "extension:build": "rsbuild build --env-mode extension",
     "extension:dev": "rsbuild build -w -m development --env-mode extension",
     "extension:package": "pnpm run extension:build && vsce package --no-dependencies",

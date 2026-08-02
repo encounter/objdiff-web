@@ -2,7 +2,7 @@ import styles from './SymbolsView.module.css';
 
 import memoizeOne from 'memoize-one';
 import { type diff, display } from 'objdiff-wasm';
-import { memo, useCallback, useMemo, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import {
   FixedSizeList,
   type ListChildComponentProps,
@@ -10,16 +10,21 @@ import {
 } from 'react-window';
 import { useShallow } from 'zustand/react/shallow';
 import type { Unit } from '../../shared/config';
+import type { MatchRange } from '../../shared/fuzzy';
 import { createContextMenu } from '../common/ContextMenu';
+import PercentBadge from '../common/PercentBadge';
 import { createTooltip } from '../common/TooltipShared';
 import type { DiffOutput } from '../diff';
 import {
+  type SearchOptions,
   type Side,
   type SymbolRefByName,
+  defaultSearchOptions,
   useAppStore,
   useExtensionStore,
 } from '../state';
-import { percentClass, useFontSize } from '../util/util';
+import { createSymbolFilter, splitRanges } from '../util/symbolSearch';
+import { useFontSize } from '../util/util';
 import { type TreeData, TreeRow } from './TreeView';
 
 export type SymbolTooltipContent = {
@@ -40,29 +45,23 @@ const SectionRow = ({
 }: {
   section: display.SectionDisplay;
 }) => {
-  let percentElem = null;
-  if (section.matchPercent != null) {
-    percentElem = (
-      <>
-        {' ('}
-        <span className={percentClass(section.matchPercent)}>
-          {Math.floor(section.matchPercent).toFixed(0)}%
-        </span>
-        {')'}
-      </>
-    );
-  }
   return (
-    <span>
-      {section.name} ({section.size.toString(16)}){percentElem}
+    <span className={styles.sectionRow}>
+      <span className={styles.sectionName}>{section.name}</span>
+      <span className={styles.sectionSize}>({section.size.toString(16)})</span>
+      {section.matchPercent != null && (
+        <PercentBadge percent={section.matchPercent} />
+      )}
     </span>
   );
 };
 
 const SymbolRow = ({
   symbol,
+  ranges,
 }: {
   symbol: display.SymbolDisplay;
+  ranges: MatchRange[];
 }) => {
   const flags = [];
   if (symbol.info.flags.global) {
@@ -108,20 +107,27 @@ const SymbolRow = ({
   if (symbol.matchPercent != null) {
     percentElem = (
       <>
-        {'('}
-        <span className={percentClass(symbol.matchPercent)}>
-          {Math.floor(symbol.matchPercent).toFixed(0)}%
-        </span>
-        {') '}
+        <PercentBadge percent={symbol.matchPercent} />{' '}
       </>
     );
   }
+  const name = symbol.info.demangledName || symbol.info.name;
   return (
     <>
       {flagsElem}
       {percentElem}
       <span className={styles.symbolName}>
-        {symbol.info.demangledName || symbol.info.name}
+        {ranges.length === 0
+          ? name
+          : splitRanges(name, ranges).map((part, i) => (
+              <span
+                // biome-ignore lint/suspicious/noArrayIndexKey: parts are positional
+                key={i}
+                className={part.matched ? styles.searchMatch : undefined}
+              >
+                {part.text}
+              </span>
+            ))}
       </span>
     </>
   );
@@ -132,7 +138,11 @@ type SymbolData = {
   symbolRef: display.SymbolRef;
   selected: boolean;
   highlighted: boolean;
+  ranges: MatchRange[];
 };
+
+/** How many symbols the filter kept, out of how many exist. */
+export type SymbolCounts = { shown: number; total: number };
 
 type ItemData = {
   obj: diff.ObjectDiff | undefined;
@@ -142,6 +152,9 @@ type ItemData = {
   side: Side;
   isMapping: boolean;
   currentUnitName: string;
+  counts: SymbolCounts;
+  searchError: string | null;
+  filterActive: boolean;
   setSectionCollapsed: (section: string, collapsed: boolean) => void;
   setHoverSymbols: (value: [number | null, number | null]) => void;
 };
@@ -173,7 +186,7 @@ const SymbolListRow = memo(
     }
     const node = treeData.nodes[index];
     if (node.type === 'leaf') {
-      const { symbolRef, section, selected, highlighted } = node.data;
+      const { symbolRef, section, selected, highlighted, ranges } = node.data;
       const symbol = display.displaySymbol(obj, symbolRef);
       const tooltipContent: SymbolTooltipContent = {
         symbolRef,
@@ -185,7 +198,7 @@ const SymbolListRow = memo(
           index={index}
           style={style}
           data={treeData}
-          render={() => <SymbolRow symbol={symbol} />}
+          render={() => <SymbolRow symbol={symbol} ranges={ranges} />}
           getClasses={() => {
             const classes = [];
             if (selected) {
@@ -266,6 +279,7 @@ const createItemDataFn = (
   otherObj: diff.ObjectDiff | undefined,
   collapsedSections: Record<string, boolean>,
   search: string | null,
+  searchOptions: SearchOptions,
   side: Side,
   isMapping: boolean,
   setSectionCollapsed: (section: string, collapsed: boolean) => void,
@@ -280,6 +294,7 @@ const createItemDataFn = (
   diffLabel: string | null,
 ): ItemData => {
   const currentUnitName = currentUnit?.name || '';
+  const filter = createSymbolFilter(search, searchOptions);
   if (!obj) {
     return {
       obj,
@@ -294,6 +309,9 @@ const createItemDataFn = (
       side,
       isMapping,
       currentUnitName,
+      counts: { shown: 0, total: 0 },
+      searchError: filter.error,
+      filterActive: filter.active,
       setSectionCollapsed,
       setHoverSymbols,
     };
@@ -302,11 +320,14 @@ const createItemDataFn = (
     currentUnit?.metadata?.reverse_fn_order ??
     currentUnit?.reverse_fn_order ??
     false;
+  // Filtering happens in TypeScript rather than via the WASM's `regex` filter:
+  // that way fuzzy and plain-text modes, percentage filters and match
+  // highlighting all share one implementation, and a malformed regex shows an
+  // error instead of silently matching nothing.
   const sections = display.displaySections(
     obj,
     {
       mapping: mappingSymbol ?? undefined,
-      regex: search ?? undefined,
     },
     {
       showHiddenSymbols,
@@ -320,11 +341,29 @@ const createItemDataFn = (
     highlightedPath,
     setHighlightedPath,
   };
+  const counts: SymbolCounts = { shown: 0, total: 0 };
+
   for (const section of sections) {
-    if (search !== null && section.symbols.length === 0) {
+    const matches: { symbolRef: number; ranges: MatchRange[]; name: string }[] =
+      [];
+    for (const symbolRef of section.symbols) {
+      counts.total++;
+      const symbol = display.displaySymbol(obj, symbolRef);
+      const match = filter.match(symbol);
+      if (!match) {
+        continue;
+      }
+      counts.shown++;
+      matches.push({
+        symbolRef,
+        ranges: match.ranges,
+        name: symbol.info.name,
+      });
+    }
+    if (filter.active && matches.length === 0) {
       continue;
     }
-    treeData.leafCount += section.symbols.length;
+    treeData.leafCount += matches.length;
     const collapsed = collapsedSections[section.id];
     treeData.nodes.push({
       type: 'branch',
@@ -335,8 +374,7 @@ const createItemDataFn = (
       collapsed,
     });
     if (!collapsed) {
-      for (const symbolRef of section.symbols) {
-        const symbol = display.displaySymbol(obj, symbolRef);
+      for (const { symbolRef, ranges, name } of matches) {
         treeData.nodes.push({
           type: 'leaf',
           id: `symbol-${symbolRef}`,
@@ -346,7 +384,8 @@ const createItemDataFn = (
             section,
             symbolRef,
             selected: hoverSymbol === symbolRef,
-            highlighted: diffLabel !== null && diffLabel === symbol.info.name,
+            highlighted: diffLabel !== null && diffLabel === name,
+            ranges,
           },
         });
       }
@@ -360,6 +399,9 @@ const createItemDataFn = (
     side,
     isMapping,
     currentUnitName,
+    counts,
+    searchError: filter.error,
+    filterActive: filter.active,
     setSectionCollapsed,
     setHoverSymbols,
   };
@@ -379,6 +421,8 @@ export const SymbolList = ({
   setHighlightedPath,
   hoverSymbols,
   setHoverSymbols,
+  onCounts,
+  fullWidth = false,
 }: {
   height: number;
   width: number;
@@ -391,6 +435,9 @@ export const SymbolList = ({
   setHighlightedPath: (id: string | null) => void;
   hoverSymbols: [number | null, number | null];
   setHoverSymbols: (value: [number | null, number | null]) => void;
+  onCounts?: (side: Side, counts: SymbolCounts, error: string | null) => void;
+  /** Use the full given width instead of half of it (sidebar rather than column). */
+  fullWidth?: boolean;
 }) => {
   const { currentUnit, diffLabel } = useExtensionStore(
     useShallow((state) => ({
@@ -402,6 +449,7 @@ export const SymbolList = ({
   const {
     collapsedSections,
     search,
+    searchOptions,
     setUnitSectionCollapsed,
     setUnitScrollOffset,
   } = useAppStore(
@@ -410,6 +458,7 @@ export const SymbolList = ({
       return {
         collapsedSections: unit.collapsedSections,
         search: unit.search,
+        searchOptions: unit.searchOptions ?? defaultSearchOptions,
         setUnitSectionCollapsed: state.setUnitSectionCollapsed,
         setUnitScrollOffset: state.setUnitScrollOffset,
       };
@@ -432,6 +481,7 @@ export const SymbolList = ({
     side === 'left' ? result.diff?.right : result.diff?.left,
     collapsedSections[side],
     search,
+    searchOptions,
     side,
     result.isMapping,
     setSectionCollapsed,
@@ -446,6 +496,51 @@ export const SymbolList = ({
     diffLabel,
   );
   const itemSize = useFontSize() * 1.33;
+
+  // Report filter results up to the header, which owns the search bar.
+  const { counts, searchError } = itemData;
+  useEffect(() => {
+    onCounts?.(side, counts, searchError);
+  }, [onCounts, side, counts, searchError]);
+
+  const { setUnitSearch, setUnitSearchOptions } = useAppStore(
+    useShallow((state) => ({
+      setUnitSearch: state.setUnitSearch,
+      setUnitSearchOptions: state.setUnitSearchOptions,
+    })),
+  );
+
+  if (itemData.obj && itemData.treeData.nodes.length === 0) {
+    return (
+      <div
+        className={styles.emptyState}
+        style={{ width: fullWidth ? width : width / 2, height }}
+      >
+        <span className={styles.title}>
+          {itemData.filterActive
+            ? 'No symbols match the current filter'
+            : 'This object has no symbols'}
+        </span>
+        {search ? (
+          <span>
+            Nothing matched <code>{search}</code>
+          </span>
+        ) : null}
+        {itemData.filterActive && (
+          <button
+            type="button"
+            onClick={() => {
+              setUnitSearch(currentUnitName, null);
+              setUnitSearchOptions(currentUnitName, { percentFilter: 'all' });
+            }}
+          >
+            Clear filter
+          </button>
+        )}
+      </div>
+    );
+  }
+
   return (
     <FixedSizeList
       key={`${side}-${currentUnitName}`}
@@ -453,7 +548,7 @@ export const SymbolList = ({
       height={height - 1}
       itemCount={itemData.treeData.nodes.length}
       itemSize={itemSize}
-      width={width / 2}
+      width={fullWidth ? width : width / 2}
       itemData={itemData}
       overscanCount={20}
       onScroll={(e) => {

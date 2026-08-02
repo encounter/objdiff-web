@@ -5,16 +5,25 @@ import {
   resolveProjectConfig,
 } from '../shared/config';
 import type {
+  BuildStatus,
   InboundMessage,
   OutboundMessage,
   StateMessage,
 } from '../shared/messages';
+// Type-only: state.ts imports this module, so a value import here would create
+// a circular dependency and leave the initial state undefined at load time.
 import type { AppStateSerialized, MyWebviewApi } from './state';
 
 let state: AppStateSerialized | undefined = {
   leftSymbol: null,
   rightSymbol: null,
   unitsScrollOffset: 0,
+  unitsSearch: null,
+  unitsSearchOptions: {
+    mode: 'fuzzy',
+    caseSensitive: false,
+    percentFilter: 'all',
+  },
   unitStates: {},
   highlight: JSON.stringify({
     left: null,
@@ -62,6 +71,82 @@ let configProperties: ConfigProperties = {};
 const serializedConfigProperties = localStorage.getItem('configProperties');
 if (serializedConfigProperties) {
   configProperties = JSON.parse(serializedConfigProperties);
+}
+
+/**
+ * Ask the API server to rebuild a unit.
+ *
+ * A browser can't run the project's build itself, so the Build button forwards
+ * to `POST /api/build`. Returns a failed BuildStatus to display, or null when
+ * the build succeeded or the server has no build support.
+ */
+async function runBuild(unit: Unit): Promise<BuildStatus | null> {
+  const name = unit.name || unit.path;
+  if (!name) {
+    return null;
+  }
+  let response: Response;
+  try {
+    response = await fetch(`/api/build?unit=${encodeURIComponent(name)}`, {
+      method: 'POST',
+    });
+  } catch (e) {
+    return {
+      success: false,
+      cmdline: '',
+      stdout: '',
+      stderr: `Could not reach the API server to build: ${e}\n\nRun both together with: pnpm dev`,
+    };
+  }
+  if (response.status === 404) {
+    // No API server behind /api — the dev mock only serves files.
+    return null;
+  }
+  let body: {
+    ok?: boolean;
+    steps?: {
+      command: string;
+      args: string[];
+      exitCode: number;
+      stdout: string;
+      stderr: string;
+    }[];
+    error?: {
+      code: string;
+      message: string;
+      hint?: string;
+      diagnostics?: string;
+    };
+  };
+  try {
+    body = await response.json();
+  } catch {
+    return {
+      success: false,
+      cmdline: '',
+      stdout: '',
+      stderr: `Build request failed: ${response.status} ${response.statusText}`,
+    };
+  }
+  if (body.ok) {
+    return null;
+  }
+  // MSVC writes its diagnostics to stdout, so prefer the server's extracted
+  // lines and fall back to whichever stream actually has content.
+  const failed =
+    body.steps?.find((s) => s.exitCode !== 0) ??
+    body.steps?.find((s) => s.stderr || s.stdout) ??
+    body.steps?.[0];
+  return {
+    success: false,
+    cmdline: failed ? [failed.command, ...failed.args].join(' ') : '',
+    stdout: failed?.stdout ?? '',
+    stderr:
+      body.error?.diagnostics ||
+      failed?.stderr ||
+      [body.error?.message, body.error?.hint].filter(Boolean).join('\n') ||
+      'Build failed',
+  };
 }
 
 async function fetchUnitFiles(unit: Unit, out: StateMessage): Promise<void> {
@@ -115,8 +200,26 @@ async function fetchUnitFiles(unit: Unit, out: StateMessage): Promise<void> {
 async function handleMessage(msg: OutboundMessage): Promise<void> {
   switch (msg.type) {
     case 'ready': {
-      const response = await fetchFile('objdiff.json');
-      const projectConfig = await response.json();
+      let projectConfig: ProjectConfig;
+      try {
+        projectConfig = await (await fetchFile('objdiff.json')).json();
+      } catch (e) {
+        // Still mark the app as ready: an unhandled rejection here used to
+        // leave the UI stuck on a blank screen with no explanation.
+        sendMessage({
+          type: 'state',
+          buildRunning: false,
+          configProperties,
+          currentUnit: null,
+          leftStatus: null,
+          rightStatus: null,
+          leftObject: null,
+          rightObject: null,
+          projectConfig: null,
+          configError: `${e instanceof Error ? e.message : e}`,
+        });
+        return;
+      }
       resolvedProjectConfig = resolveProjectConfig(projectConfig);
       const out: StateMessage = {
         type: 'state',
@@ -131,6 +234,22 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
       };
       if (lastUnit) {
         await fetchUnitFiles(lastUnit, out);
+        if (!out.leftStatus?.success || !out.rightStatus?.success) {
+          // Only build on startup when something is actually missing, and show
+          // the UI first — a build takes seconds and would otherwise leave the
+          // page blank for all of it.
+          sendMessage({ ...out, buildRunning: true });
+          const buildStatus = await runBuild(lastUnit);
+          await fetchUnitFiles(lastUnit, out);
+          if (buildStatus) {
+            if (!out.leftStatus?.success) {
+              out.leftStatus = buildStatus;
+            }
+            if (!out.rightStatus?.success) {
+              out.rightStatus = buildStatus;
+            }
+          }
+        }
       }
       sendMessage(out);
       break;
@@ -146,7 +265,18 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
         rightObject: null,
       };
       if (lastUnit) {
+        const buildStatus = await runBuild(lastUnit);
         await fetchUnitFiles(lastUnit, out);
+        // Surface a failed build in the column that couldn't be produced,
+        // rather than showing a bare "object not found".
+        if (buildStatus) {
+          if (!out.leftStatus?.success) {
+            out.leftStatus = buildStatus;
+          }
+          if (!out.rightStatus?.success) {
+            out.rightStatus = buildStatus;
+          }
+        }
       }
       sendMessage(out);
       break;
@@ -169,7 +299,18 @@ async function handleMessage(msg: OutboundMessage): Promise<void> {
       };
       if (unit) {
         sendMessage({ type: 'state', buildRunning: true });
+        // Build on selection, the same as the desktop app: an object that has
+        // never been compiled would otherwise just read as "not found".
+        const buildStatus = await runBuild(unit);
         await fetchUnitFiles(unit, out);
+        if (buildStatus) {
+          if (!out.leftStatus?.success) {
+            out.leftStatus = buildStatus;
+          }
+          if (!out.rightStatus?.success) {
+            out.rightStatus = buildStatus;
+          }
+        }
       }
       lastUnit = unit;
       localStorage.setItem('lastUnit', JSON.stringify(unit));

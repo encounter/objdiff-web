@@ -1,0 +1,92 @@
+.layout {
+  flex: 1 1 0;
+  display: flex;
+  flex-flow: row;
+  min-height: 0;
+}
+
+.sidebar {
+  flex: 0 0 auto;
+  width: var(--sidebar-width, 280px);
+  min-width: 180px;
+  max-width: 50%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--panel-separator);
+  background-color: var(--panel-background);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--panel-separator);
+}
+
+.title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ui-font-family);
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--color-muted);
+}
+
+.title > .name {
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--color-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.title > .spacer {
+  margin-left: auto;
+}
+
+.list {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+}
+
+.resizer {
+  flex: 0 0 auto;
+  width: 5px;
+  margin-left: -3px;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  cursor: col-resize;
+  background: transparent;
+  z-index: 2;
+}
+
+.resizer:hover,
+.resizer.dragging {
+  background-color: var(--focus-border-color);
+}
+
+.main {
+  /* Row, matching the container the diff content is normally mounted in —
+     AutoSizer measures itself and gets no height from a column parent. */
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-flow: row;
+}
+
+.collapsed-strip {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: flex-start;
+  padding: 4px;
+  border-right: 1px solid var(--panel-separator);
+  background-color: var(--panel-background);
+}

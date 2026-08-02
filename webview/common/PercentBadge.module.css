@@ -1,0 +1,38 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4em;
+  vertical-align: baseline;
+}
+
+.value {
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  display: inline-block;
+  width: 3.2em;
+  height: 0.42em;
+  border-radius: 0.21em;
+  background-color: var(--percent-track);
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.fill {
+  display: block;
+  height: 100%;
+  border-radius: 0.21em;
+  background-color: currentColor;
+  transition: width 120ms ease-out;
+}
+
+.large .value {
+  font-size: 1.35em;
+  font-weight: 600;
+}
+
+.large .bar {
+  width: 5em;
+  height: 0.5em;
+}

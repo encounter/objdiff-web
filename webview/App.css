@@ -31,6 +31,8 @@
     light-dark(rgba(97, 97, 97, 0.5), rgba(204, 204, 204, 0.5))
   );
   --color-bright: light-dark(black, white);
+  --color-data-flow: light-dark(#8250df, #c586c0);
+  --percent-track: light-dark(rgba(0, 0, 0, 0.13), rgba(255, 255, 255, 0.16));
 
   --panel-background: var(
     --vscode-panel-background,
@@ -214,6 +216,30 @@ body {
     font-size: 1.2rem;
     font-weight: 400;
     opacity: 0.5;
+  }
+
+  pre {
+    max-width: min(72ch, 90vw);
+    margin: 0.5em auto;
+    padding: 0.6em 0.9em;
+    border: 1px solid var(--panel-separator);
+    border-radius: 4px;
+    background-color: var(--panel-background);
+    font-family: var(--code-font-family);
+    font-size: var(--code-font-size);
+    text-align: left;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  pre.error {
+    color: var(--color-red);
+    border-color: var(--color-red);
+  }
+
+  code {
+    font-family: var(--code-font-family);
+    color: var(--color-bright);
   }
 }
 

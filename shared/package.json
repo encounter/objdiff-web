@@ -1,0 +1,4 @@
+{
+  "//": "The API server is an ES module (objdiff-wasm uses top-level await) and imports these files directly, so they must be ESM too. Bundled code is unaffected — rspack resolves these by path.",
+  "type": "module"
+}

@@ -28,6 +28,8 @@ export type StateMessage = {
   rightObject?: ArrayBuffer | null;
   projectConfig?: ProjectConfig | null;
   diffLabel?: string | null;
+  /** Set when the project configuration could not be loaded at all. */
+  configError?: string | null;
 };
 
 // decomp.me colors
